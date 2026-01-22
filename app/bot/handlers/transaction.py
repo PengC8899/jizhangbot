@@ -71,19 +71,32 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = update.message.text
     if not text: return
     
+    # Debug log
+    from loguru import logger
+    logger.info(f"Transaction handler received: {text}")
+    
     # 1. Parse Command
     # Support "+1000", "+ 1000", "入款1000", "入款 1000"
+    # Also support implicit positive numbers if configured, but let's stick to explicit for now
+    # We need to be careful about regex. 
+    # ^\+? -> Optional plus at start? No, explicit plus is safer to avoid chatting interference.
+    
     deposit_match = re.match(r"^(\+|入款)\s*(-?\d+(\.\d+)?)", text)
-    # Support "下发1000", "下发 1000", "下发100u"
     payout_match = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", text)
     
-    # 2. Add debug logging (temporary) or loose matching for "+10000"
-    # Actually "+10000" should be matched by r"^(\+|入款)\s*(-?\d+(\.\d+)?)".
-    # Wait, in the screenshot, the user typed "+10000 " (with space maybe? or just +10000)
-    # The issue might be that handle_transaction is not even called if it's not registered properly
-    # or if the filter in main.py excludes it.
+    # Fallback for just "+10000" without space if re.match is strict
+    if not deposit_match:
+         # Try matching just the number with + prefix
+         # This handles: "+10000", "+ 10000"
+         simple_plus_match = re.match(r"^\+\s*(\d+(\.\d+)?)", text)
+         if simple_plus_match:
+             deposit_match = simple_plus_match
+             # Adjust group index mapping if needed. 
+             # For simple_plus_match: group(1) is the amount.
+             # We need to normalize how we extract amount below.
     
-    if not (deposit_match or payout_match):
+    if not (deposit_match or payout_match or (text.strip().startswith('+') and text.strip()[1:].replace('.', '', 1).isdigit())):
+        logger.info(f"Ignored message: {text}")
         return
 
     bot_id = context.bot_data.get("db_id")
@@ -94,6 +107,7 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         # Check if active
         if not await service.is_group_active(chat_id, bot_id):
+            logger.info(f"Group {chat_id} not active")
             await update.message.reply_text("⚠️ 请先输入“开始”以开启今日记录")
             return
 
@@ -101,14 +115,27 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         amount = Decimal(0)
         is_usdt_amount = False
         
-        if deposit_match:
-            type_ = "deposit"
-            amount = Decimal(deposit_match.group(2))
-        elif payout_match:
+        if payout_match:
             type_ = "payout"
             amount = Decimal(payout_match.group(2))
             if payout_match.group(4): # 'u' suffix
                 is_usdt_amount = True
+        elif deposit_match:
+            type_ = "deposit"
+            # If matched by main regex: group(2) is amount
+            # If matched by simple_plus_match: group(1) is amount
+            # Let's unify extraction.
+            if len(deposit_match.groups()) >= 2 and deposit_match.group(2):
+                 amount = Decimal(deposit_match.group(2))
+            else:
+                 # Fallback extraction
+                 amount_str = re.search(r"(-?\d+(\.\d+)?)", text).group(0)
+                 amount = Decimal(amount_str)
+        else:
+             # Fallback simple + case
+             amount_str = text.strip().replace('+', '').strip()
+             amount = Decimal(amount_str)
+             type_ = "deposit"
             
         # Get Config (and update group name)
         group_title = update.effective_chat.title
