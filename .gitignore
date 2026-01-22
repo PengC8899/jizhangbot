@@ -9,3 +9,7 @@ venv/
 *.db
 *.sqlite
 .DS_Store
+*.pem
+*.db-shm
+*.db-wal
+logs/

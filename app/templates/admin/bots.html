@@ -1,0 +1,191 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}机器人管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4>机器人管理</h4>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBotModal">
+        <i class="bi bi-plus-lg"></i> 添加机器人
+    </button>
+</div>
+
+<div class="row">
+    {% for bot in bots %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h5 class="card-title mb-0">{{ bot.name or "Unnamed Bot" }}</h5>
+                    <span class="badge bg-success">Active</span>
+                </div>
+                <p class="text-muted small mb-2">ID: {{ bot.id }}</p>
+                <p class="text-muted small text-truncate">Token: {{ bot.token[:10] }}...</p>
+                
+                <hr>
+                
+                <h6>按钮配置</h6>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-secondary btn-sm" onclick='editButtons({{ bot.id }}, {{ bot.button_config | tojson }})'>
+                        <i class="bi bi-gear"></i> 配置账单按钮
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add Bot Modal -->
+<div class="modal fade" id="addBotModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加新机器人</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Bot Token</label>
+                    <input type="text" class="form-control" id="botToken" placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bot Name (备注)</label>
+                    <input type="text" class="form-control" id="botName" placeholder="客服1号">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addBot()">添加并启动</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Buttons Modal -->
+<div class="modal fade" id="editButtonsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">配置按钮文案 & 链接</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editBotId">
+                
+                <h6 class="text-muted mb-3">账单跳转按钮 (URL自动生成)</h6>
+                <div class="mb-3">
+                    <label class="form-label">按钮文案</label>
+                    <input type="text" class="form-control" id="btn_bill_text" value="点击跳转完整账单">
+                </div>
+                
+                <hr>
+                
+                <h6 class="text-muted mb-3">业务对接按钮</h6>
+                <div class="row mb-2">
+                    <div class="col">
+                        <label class="form-label small">文案</label>
+                        <input type="text" class="form-control" id="btn_biz_text" value="业务对接">
+                    </div>
+                    <div class="col">
+                        <label class="form-label small">链接 (URL)</label>
+                        <input type="text" class="form-control" id="btn_biz_url" placeholder="https://t.me/...">
+                    </div>
+                </div>
+                
+                <h6 class="text-muted mb-3 mt-3">投诉建议按钮</h6>
+                <div class="row mb-2">
+                    <div class="col">
+                        <label class="form-label small">文案</label>
+                        <input type="text" class="form-control" id="btn_complaint_text" value="投诉建议">
+                    </div>
+                    <div class="col">
+                        <label class="form-label small">链接 (URL)</label>
+                        <input type="text" class="form-control" id="btn_complaint_url" placeholder="https://t.me/...">
+                    </div>
+                </div>
+                
+                <h6 class="text-muted mb-3 mt-3">客服按钮</h6>
+                <div class="row mb-2">
+                    <div class="col">
+                        <label class="form-label small">文案</label>
+                        <input type="text" class="form-control" id="btn_support_text" value="24小时客服">
+                    </div>
+                    <div class="col">
+                        <label class="form-label small">链接 (URL)</label>
+                        <input type="text" class="form-control" id="btn_support_url" placeholder="https://t.me/...">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveButtons()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const addBotModal = new bootstrap.Modal(document.getElementById('addBotModal'));
+    const editButtonsModal = new bootstrap.Modal(document.getElementById('editButtonsModal'));
+    
+    async function addBot() {
+        const token = document.getElementById('botToken').value;
+        const name = document.getElementById('botName').value;
+        
+        if (!token) return alert('Token不能为空');
+        
+        const res = await apiCall('/admin/bot/create', 'POST', { token, name });
+        if (res.success) {
+            addBotModal.hide();
+            location.reload();
+        } else {
+            alert('添加失败: ' + res.error);
+        }
+    }
+    
+    function editButtons(botId, configStr) {
+        document.getElementById('editBotId').value = botId;
+        
+        // Parse config (it might be a string or object depending on jinja filter)
+        let config = {};
+        try {
+            config = (typeof configStr === 'string') ? JSON.parse(configStr) : configStr;
+        } catch(e) {}
+        
+        document.getElementById('btn_bill_text').value = config.bill_text || "点击跳转完整账单";
+        document.getElementById('btn_biz_text').value = config.biz_text || "业务对接";
+        document.getElementById('btn_biz_url').value = config.biz_url || "";
+        document.getElementById('btn_complaint_text').value = config.complaint_text || "投诉建议";
+        document.getElementById('btn_complaint_url').value = config.complaint_url || "";
+        document.getElementById('btn_support_text').value = config.support_text || "24小时客服";
+        document.getElementById('btn_support_url').value = config.support_url || "";
+        
+        editButtonsModal.show();
+    }
+    
+    async function saveButtons() {
+        const botId = document.getElementById('editBotId').value;
+        const config = {
+            bill_text: document.getElementById('btn_bill_text').value,
+            biz_text: document.getElementById('btn_biz_text').value,
+            biz_url: document.getElementById('btn_biz_url').value,
+            complaint_text: document.getElementById('btn_complaint_text').value,
+            complaint_url: document.getElementById('btn_complaint_url').value,
+            support_text: document.getElementById('btn_support_text').value,
+            support_url: document.getElementById('btn_support_url').value
+        };
+        
+        const res = await apiCall(`/admin/bot/${botId}/buttons`, 'POST', config);
+        if (res.success) {
+            editButtonsModal.hide();
+            location.reload();
+        } else {
+            alert('保存失败: ' + res.error);
+        }
+    }
+</script>
+{% endblock %}

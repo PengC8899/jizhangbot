@@ -1,0 +1,160 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}群组管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4>活跃群组管理</h4>
+    <button class="btn btn-warning text-white" data-bs-toggle="modal" data-bs-target="#broadcastModal">
+        <i class="bi bi-megaphone"></i> 广播消息到所有群
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>群组ID</th>
+                    <th>群组名称</th>
+                    <th>所属Bot</th>
+                    <th>状态</th>
+                    <th>到期时间</th>
+                    <th>费率</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in groups %}
+                <tr>
+                    <td>{{ group.group_id }}</td>
+                    <td>{{ group.group_name or "未命名群组" }}</td>
+                    <td>Bot #{{ group.bot_id }}</td>
+                    <td>
+                        {% if group.is_active %}
+                        <span class="badge bg-success">记账中</span>
+                        {% else %}
+                        <span class="badge bg-secondary">停止</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if group.expire_at %}
+                        {{ group.expire_at.strftime('%Y-%m-%d') }}
+                        {% else %}
+                        <span class="text-muted">无授权</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ group.fee_percent }}%</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="openMsgModal({{ group.bot_id }}, {{ group.group_id }})">
+                            <i class="bi bi-chat-dots"></i> 发送消息
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">暂无活跃群组</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Send Message Modal -->
+<div class="modal fade" id="msgModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">发送消息到群组</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="msgBotId">
+                <input type="hidden" id="msgGroupId">
+                
+                <div class="mb-3">
+                    <label class="form-label">消息内容</label>
+                    <textarea class="form-control" id="msgContent" rows="4" placeholder="请输入要发送的内容..."></textarea>
+                    <div class="form-text">机器人将直接发送此文本到目标群组。</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="sendMsg()">发送</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Broadcast Modal -->
+<div class="modal fade" id="broadcastModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">全员广播</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">广播内容</label>
+                    <textarea class="form-control" id="broadcastContent" rows="4" placeholder="请输入要广播的内容..."></textarea>
+                    <div class="form-text text-danger">⚠️ 注意：此消息将发送给所有机器人所在的所有活跃群组！</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning text-white" onclick="sendBroadcast()">确认广播</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const msgModal = new bootstrap.Modal(document.getElementById('msgModal'));
+    const broadcastModal = new bootstrap.Modal(document.getElementById('broadcastModal'));
+    
+    function openMsgModal(botId, groupId) {
+        document.getElementById('msgBotId').value = botId;
+        document.getElementById('msgGroupId').value = groupId;
+        document.getElementById('msgContent').value = '';
+        msgModal.show();
+    }
+    
+    async function sendMsg() {
+        const botId = document.getElementById('msgBotId').value;
+        const groupId = document.getElementById('msgGroupId').value;
+        const text = document.getElementById('msgContent').value;
+        
+        if (!text) return alert('内容不能为空');
+        
+        const res = await apiCall(`/admin/bot/${botId}/group/${groupId}/message`, 'POST', { text });
+        
+        if (res.success) {
+            alert('发送成功');
+            msgModal.hide();
+        } else {
+            alert('发送失败: ' + res.error);
+        }
+    }
+
+    async function sendBroadcast() {
+        const text = document.getElementById('broadcastContent').value;
+        if (!text) return alert('广播内容不能为空');
+        
+        if (!confirm('确定要向所有群组发送此消息吗？操作不可撤销。')) return;
+        
+        const res = await apiCall('/admin/broadcast', 'POST', { text });
+        
+        if (res.success) {
+            alert(`广播成功！已发送给 ${res.data.count} 个群组`);
+            broadcastModal.hide();
+        } else {
+            alert('广播失败: ' + res.error);
+        }
+    }
+</script>
+{% endblock %}

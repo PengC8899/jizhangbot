@@ -13,6 +13,10 @@ class Bot(Base):
     created_at = Column(DateTime, default=func.now())
     webhook_secret = Column(String, nullable=True)
     
+    # JSON String for button config
+    # Structure: {"bill_text": "...", "biz_text": "...", "biz_url": "...", ...}
+    button_config = Column(String, default="{}")
+    
     # Relationships
     fee_template = relationship("BotFeeTemplate", back_populates="bot", uselist=False)
     exchange_template = relationship("BotExchangeTemplate", back_populates="bot", uselist=False)

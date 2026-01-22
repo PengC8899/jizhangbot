@@ -10,6 +10,7 @@ from app.core.config import settings
 from loguru import logger
 
 from app.services.license_service import LicenseService
+from app.core.utils import to_timezone, get_now
 
 # ... (Previous imports)
 
@@ -111,6 +112,11 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
+        # Update Group Name when starting
+        group_title = update.effective_chat.title
+        # Ensure config exists and update name
+        await service.get_group_config(chat_id, bot_id, group_name=group_title)
+        
         await service.start_recording(chat_id, bot_id)
         
         # Only show keyboard in Private Chat
@@ -147,8 +153,9 @@ async def trial_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await session.execute(stmt_config)
         config = result.scalars().first()
         
-        if config and config.expire_at and config.expire_at > datetime.now():
-            await update.message.reply_text(f"✅ 您已有有效授权，有效期至: {config.expire_at.strftime('%Y-%m-%d')}")
+        if config and config.expire_at and config.expire_at > get_now():
+            expire_str = to_timezone(config.expire_at).strftime('%Y-%m-%d')
+            await update.message.reply_text(f"✅ 您已有有效授权，有效期至: {expire_str}")
             return
 
         # 2. Check for pending request
@@ -203,7 +210,7 @@ async def license_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
              await update.message.reply_text("⏳ 暂无授权信息，请使用 /activate 激活")
              return
 
-        expire_str = config.expire_at.strftime("%Y-%m-%d %H:%M")
+        expire_str = to_timezone(config.expire_at).strftime("%Y-%m-%d %H:%M")
         await update.message.reply_text(f"📅 你已有权限啦，结束时间：{expire_str}")
     finally:
         await session.close()
@@ -500,7 +507,7 @@ async def show_bill_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for r in records:
             icon = "🟢" if r.type == "deposit" else "🔴"
             t_name = "入款" if r.type == "deposit" else "下发"
-            time_str = r.created_at.strftime("%H:%M:%S")
+            time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
             msg += f"{icon} {time_str} <b>{t_name}</b> {r.amount}\n"
             msg += f"   👤 操作: {r.operator_name}\n"
         
@@ -557,20 +564,19 @@ async def mode_setting_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         await session.close()
 
+import json
+from app.models.bot import Bot
+
 async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handle: +1000, 下发1000, 下发100u, 入款-100 (Correction)
     """
+    # ... (Keep existing code)
     text = update.message.text
     if not text: return
     
     # 1. Parse Command
-    # +XXX or 入款XXX (Support negative for correction)
-    # Regex: ^(\+|入款)\s*(-?\d+(\.\d+)?)
     deposit_match = re.match(r"^(\+|入款)\s*(-?\d+(\.\d+)?)", text)
-    
-    # 下发XXX or 下发XXXu
-    # Regex: ^(下发)\s*(-?\d+(\.\d+)?)(u|U)?
     payout_match = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", text)
     
     if not (deposit_match or payout_match):
@@ -584,15 +590,6 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         # Check if active
         if not await service.is_group_active(chat_id, bot_id):
-            # Check if this group has valid license/trial before complaining about "start"
-            # Actually, "start" creates a group_config entry if not exists.
-            # But if user types +100 without "start", we need to check if group_config exists at all?
-            # get_group_config will create one if not exists? No, it returns None or creates.
-            # service.is_group_active checks is_active flag.
-            
-            # If group is not active (didn't type "开始"), we should prompt them.
-            # But maybe they just pulled bot in and typed +100 directly.
-            # Let's enforce "开始" flow to ensure date boundaries are clear.
             await update.message.reply_text("⚠️ 请先输入“开始”以开启今日记录")
             return
 
@@ -609,20 +606,14 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if payout_match.group(4): # 'u' suffix
                 is_usdt_amount = True
             
-        # Get Config
-        config = await service.get_group_config(chat_id, bot_id)
+        # Get Config (and update group name)
+        group_title = update.effective_chat.title
+        config = await service.get_group_config(chat_id, bot_id, group_name=group_title)
         
-        # Handle USDT Amount Conversion (下发100u)
-        # If user says 100u, we need to record what? 
-        # Usually ledger records Base Currency (RMB). 
-        # If rate is set, 100u = 100 * usd_rate (RMB)
         if is_usdt_amount:
             if config.usd_rate <= 0:
                 await update.message.reply_text("⚠️ 未设置美元汇率，无法使用 U 结算")
                 return
-            # Convert U to RMB for recording? Or record U?
-            # System standard seems to be RMB based on "入款".
-            # Let's convert to RMB for consistency in total stats
             amount = amount * config.usd_rate
             
         # Record
@@ -649,51 +640,21 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Construct Message
         reply = f"<b>HYPay国际支付</b>\n"
         
-        # New Format:
-        # 入款 (X笔)：
-        #   HH:MM:SS  1000 / 100=10 (Only if exchange rate logic applies? No, usually just amount)
-        #   Actually user screenshot shows: "14:24:13  1000 / 100=10" 
-        #   Wait, 1000 / 100=10 looks like Amount / ExchangeRate = USDT? 
-        #   Or Amount / UnitPrice = Count?
-        #   Let's stick to standard amount for now, unless user specifies logic.
-        #   User screenshot: "1000 / 100=10" -> Maybe 1000 RMB / 100 Rate = 10 U? 
-        #   Or maybe they have a "card price" logic.
-        
-        # Let's format similar to screenshot
-        # 入款 (1笔)：
-        #   14:24:13  1000
-        
-        # 下发 (0笔)：
-        
-        # 总入款: 1000
-        # 费率: 0%
-        # 汇率: 100 (If set)
-        
-        # 应下发: 10.00 USDT
-        # 未下发: 10.00 USDT
-
         reply += f"入款 ({summary['count_deposit']}笔)：\n"
-        
-        # Fetch recent 5 deposit transactions
         recent_deposits = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="deposit")
-        
         for r in recent_deposits:
-            time_str = r.created_at.strftime("%H:%M:%S")
-            # Logic: If Rate > 0, show "Amount / Rate = USDT"
-            # Screenshot: 1000 / 100=10 (Implies Rate=100)
-            
+            time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
             val_str = f"<b>{fmt(r.amount)}</b>"
             if config.usd_rate > 0:
                 usdt_val = r.amount / config.usd_rate
                 val_str += f" / {config.usd_rate}={usdt_val:.2f}"
-            
             reply += f"  {time_str}  {val_str}\n"
         reply += "\n"
         
         reply += f"下发 ({summary['count_payout']}笔)：\n"
         recent_payouts = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="payout")
         for r in recent_payouts:
-             time_str = r.created_at.strftime("%H:%M:%S")
+             time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
              reply += f"  {time_str}  <b>{fmt(r.amount)}</b>\n"
         reply += "\n"
 
@@ -702,24 +663,37 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         if config.usd_rate > 0:
             reply += f"汇率: {config.usd_rate}\n"
-            
-            # USDT Calculation
-            # Net Input (RMB) / Rate = USDT
             should_pay_usdt = should_pay / config.usd_rate
             pending_pay_usdt = pending_pay / config.usd_rate
-            
             reply += f"\n应下发: {pending_pay_usdt:.2f} USDT\n"
             reply += f"未下发: {pending_pay_usdt:.2f} USDT\n"
         else:
-             # RMB Only
              reply += f"\n应下发: {fmt(should_pay)}\n"
              reply += f"未下发: {fmt(pending_pay)}\n"
 
-        # Keyboard
+        # --- Dynamic Buttons Logic ---
+        # Fetch Bot Config
+        bot = await session.get(Bot, bot_id)
+        btn_config = {}
+        if bot and bot.button_config:
+            try:
+                btn_config = json.loads(bot.button_config)
+            except:
+                pass
+        
+        # Defaults
+        bill_text = btn_config.get("bill_text") or "点击跳转完整账单"
+        biz_text = btn_config.get("biz_text") or "业务对接"
+        biz_url = btn_config.get("biz_url") or "https://t.me/"
+        complaint_text = btn_config.get("complaint_text") or "投诉建议"
+        complaint_url = btn_config.get("complaint_url") or "https://t.me/"
+        support_text = btn_config.get("support_text") or "24小时客服"
+        support_url = btn_config.get("support_url") or "https://t.me/"
+        
         kb = [
-            [InlineKeyboardButton("点击跳转完整账单", url=f"https://{settings.DOMAIN}/bill/{chat_id}")],
-            [InlineKeyboardButton("业务对接", url="https://t.me/"), InlineKeyboardButton("投诉建议", url="https://t.me/")],
-            [InlineKeyboardButton("24小时客服", url="https://t.me/")]
+            [InlineKeyboardButton(bill_text, url=f"https://{settings.DOMAIN}/bill/{chat_id}")],
+            [InlineKeyboardButton(biz_text, url=biz_url), InlineKeyboardButton(complaint_text, url=complaint_url)],
+            [InlineKeyboardButton(support_text, url=support_url)]
         ]
         
         await update.message.reply_text(reply, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(kb))

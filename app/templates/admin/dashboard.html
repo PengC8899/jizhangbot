@@ -1,0 +1,65 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}仪表盘{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">系统概览</h4>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h6 class="card-title">总机器人</h6>
+                <h2 class="mb-0">{{ stats.bot_count }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h6 class="card-title">活跃群组</h6>
+                <h2 class="mb-0">{{ stats.group_count }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <h6 class="card-title">待审试用</h6>
+                <h2 class="mb-0">{{ stats.pending_trials }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h6 class="card-title">今日流水 (CNY)</h6>
+                <h2 class="mb-0">{{ "%.0f"|format(stats.today_volume) }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0">快速入口</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/admin/ui/trials" class="btn btn-outline-primary text-start">
+                        <i class="bi bi-check-circle me-2"></i> 审核试用申请
+                    </a>
+                    <a href="/admin/ui/bots" class="btn btn-outline-success text-start">
+                        <i class="bi bi-robot me-2"></i> 添加新机器人
+                    </a>
+                    <a href="/admin/ui/groups" class="btn btn-outline-info text-start">
+                        <i class="bi bi-chat-text me-2"></i> 群发消息
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

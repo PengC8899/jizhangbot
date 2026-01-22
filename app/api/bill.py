@@ -5,6 +5,7 @@ from app.services.ledger_service import LedgerService
 from app.models.group import GroupConfig
 from sqlalchemy.ext.asyncio import AsyncSession
 from jinja2 import Template
+from app.core.utils import to_timezone
 
 router = APIRouter()
 
@@ -44,40 +45,41 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
         <title>完整账单 - {{ date_str }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f5f5f7; padding: 20px; color: #333; max-width: 800px; margin: 0 auto; }
-            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-            .date-picker { background: white; border: 1px solid #ddd; padding: 5px 10px; border-radius: 6px; font-size: 14px; }
-            .download-link { color: #007aff; text-decoration: none; font-size: 14px; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f5f5f7; padding: 20px; color: #333; max-width: 900px; margin: 0 auto; }
+            .header { display: flex; justify-content: flex-start; align-items: center; margin-bottom: 30px; }
+            .date-picker { background: white; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; font-size: 14px; margin-right: 20px; color: #333; }
+            .download-link { color: #0000EE; text-decoration: none; font-size: 14px; }
             
-            .section-title { font-size: 18px; color: #666; margin: 30px 0 15px 0; font-weight: normal; display: flex; align-items: center; }
-            .section-title span { font-size: 14px; margin-left: 5px; }
-            .section-title::after { content: ""; flex: 1; height: 1px; background: #eee; margin-left: 15px; }
+            .section-title { font-size: 20px; color: #333; margin: 40px 0 20px 0; font-weight: 300; display: flex; align-items: center; letter-spacing: 1px; }
+            .section-title span { font-size: 16px; margin-left: 10px; color: #333; }
+            .section-title::after { content: ""; flex: 1; height: 1px; background: #eee; margin-left: 20px; }
             
-            .table-container { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
+            .table-container { background: white; border: 1px solid #e0e0e0; border-radius: 0; margin-bottom: 20px; }
             table { width: 100%; border-collapse: collapse; font-size: 14px; }
-            th { text-align: left; color: #333; padding: 12px 15px; border-bottom: 1px solid #eee; font-weight: 500; background: #fafafa; }
-            td { padding: 12px 15px; border-bottom: 1px solid #f5f5f5; color: #333; }
+            th { text-align: left; color: #333; padding: 10px 15px; border-bottom: 1px solid #eee; font-weight: normal; background: #fff; border-right: 1px solid #eee; }
+            td { padding: 12px 15px; border-bottom: 1px solid #eee; color: #333; border-right: 1px solid #eee; }
             tr:last-child td { border-bottom: none; }
+            td:last-child, th:last-child { border-right: none; }
             
-            .amount { font-weight: 600; }
-            .meta { color: #999; font-size: 13px; }
+            .amount { font-weight: 700; font-size: 15px; }
+            .meta { color: #333; font-size: 14px; }
+            .calc-info { color: #333; font-size: 14px; }
+            .user-info { color: #888; }
             
-            .summary-table td { padding: 10px 15px; border-bottom: 1px solid #eee; }
-            .summary-label { color: #666; width: 150px; }
-            .summary-value { font-weight: 500; }
+            /* Summary Table Specifics */
+            .summary-table td { padding: 12px 15px; border-bottom: 1px solid #eee; }
+            .summary-label { width: 120px; color: #333; }
+            .summary-value { color: #333; }
             
-            .fab { position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; background: white; border-radius: 50%; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; color: #666; cursor: pointer; }
-            .fab-lang { bottom: 80px; background: #ff7043; color: white; }
+            .empty-row { text-align: center; color: #999; padding: 30px; }
         </style>
     </head>
     <body>
         <div class="header">
-            <div>
-                <select class="date-picker">
-                    <option>{{ date_str }}</option>
-                </select>
-                <a href="#" class="download-link" style="margin-left: 15px;">下载Excel数据</a>
-            </div>
+            <select class="date-picker">
+                <option>今天{{ date_str[5:] }}</option>
+            </select>
+            <a href="/admin/group/{{ group_id }}/export?date={{ date_str }}" class="download-link">下载Excel数据</a>
         </div>
 
         <!-- 入款列表 -->
@@ -86,27 +88,36 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
             <table>
                 <thead>
                     <tr>
-                        <th>备注</th>
-                        <th>时间</th>
-                        <th>金额</th>
-                        <th>回复人</th>
-                        <th>操作人</th>
+                        <th style="width: 80px;">备注</th>
+                        <th style="width: 100px;">时间</th>
+                        <th style="width: 100px;">金额</th>
+                        <th></th> <!-- Calc Column -->
+                        <th style="width: 100px;">回复人</th>
+                        <th style="width: 100px;">操作人</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in deposits %}
                     <tr>
                         <td></td>
-                        <td class="meta">{{ r.created_at.strftime('%H:%M:%S') }}</td>
-                        <td class="amount">{{ "%.2f"|format(r.amount) }}</td>
-                        <td class="meta">{{ r.original_text }}</td>
-                        <td class="meta">{{ r.operator_name }}</td>
+                        <td class="meta">{{ to_timezone(r.created_at).strftime('%H:%M:%S') }}</td>
+                        <td class="amount">{{ "%.0f"|format(r.amount) }}</td>
+                        <td class="calc-info">
+                            {% if usd_rate > 0 %}
+                            / {{ usd_rate }}={{ "%.2f"|format(r.amount / usd_rate) }}u
+                            {% endif %}
+                        </td>
+                        <td class="meta"></td>
+                        <td class="user-info">{{ r.operator_name }}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" style="text-align:center; color:#999; padding: 20px;">无记录</td></tr>
+                    <!-- Empty rows usually not shown in screenshot style if empty, but we keep structure -->
                     {% endfor %}
                 </tbody>
             </table>
+            {% if not deposits %}
+            <div class="empty-row">无记录</div>
+            {% endif %}
         </div>
 
         <!-- 下发列表 -->
@@ -115,27 +126,28 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
             <table>
                 <thead>
                     <tr>
-                        <th>备注</th>
-                        <th>时间</th>
-                        <th>金额</th>
-                        <th>回复人</th>
-                        <th>操作人</th>
+                        <th style="width: 80px;">备注</th>
+                        <th style="width: 100px;">时间</th>
+                        <th style="width: 100px;">金额</th>
+                        <th style="width: 100px;">回复人</th>
+                        <th style="width: 100px;">操作人</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in payouts %}
                     <tr>
                         <td></td>
-                        <td class="meta">{{ r.created_at.strftime('%H:%M:%S') }}</td>
-                        <td class="amount">{{ "%.2f"|format(r.amount) }}</td>
-                        <td class="meta">{{ r.original_text }}</td>
-                        <td class="meta">{{ r.operator_name }}</td>
+                        <td class="meta">{{ to_timezone(r.created_at).strftime('%H:%M:%S') }}</td>
+                        <td class="amount">{{ "%.0f"|format(r.amount) }}</td>
+                        <td class="meta"></td>
+                        <td class="user-info">{{ r.operator_name }}</td>
                     </tr>
-                    {% else %}
-                    <tr><td colspan="5" style="text-align:center; color:#999; padding: 20px;">无记录</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
+             {% if not payouts %}
+            <div class="empty-row">无记录</div>
+            {% endif %}
         </div>
 
         <!-- 总结 -->
@@ -152,7 +164,7 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
                 </tr>
                 <tr>
                     <td class="summary-label">入款总数:</td>
-                    <td class="summary-value">{{ "%.2f"|format(total_deposit) }} {% if usd_rate > 0 %}| {{ "%.2f"|format(total_deposit / usd_rate) }} USDT{% endif %}</td>
+                    <td class="summary-value">{{ "%.0f"|format(total_deposit) }} {% if usd_rate > 0 %}| {{ "%.2f"|format(total_deposit / usd_rate) }} USDT{% endif %}</td>
                 </tr>
                 <tr>
                     <td class="summary-label">应下发:</td>
@@ -160,17 +172,14 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
                 </tr>
                 <tr>
                     <td class="summary-label">下发总数:</td>
-                    <td class="summary-value">{{ "%.2f"|format(total_payout) }} {% if usd_rate > 0 %}USDT{% endif %}</td>
+                    <td class="summary-value">{{ "%.2f"|format(total_payout) }} USDT</td>
                 </tr>
                 <tr>
                     <td class="summary-label">未下发:</td>
-                    <td class="summary-value">{{ "%.2f"|format(pending_pay) }} {% if usd_rate > 0 %}USDT{% endif %}</td>
+                    <td class="summary-value">{{ "%.2f"|format(pending_pay) }} USDT</td>
                 </tr>
             </table>
         </div>
-
-        <div class="fab">⊞</div>
-        <div class="fab fab-lang">中/A</div>
     </body>
     </html>
     """
@@ -181,6 +190,7 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
     
     t = Template(html_template)
     content = t.render(
+        group_id=group_id,
         date_str=summary['date_str'],
         deposits=summary['deposits'],
         payouts=summary['payouts'],
@@ -189,7 +199,8 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
         fee_percent=config.fee_percent,
         usd_rate=config.usd_rate,
         should_pay=should_pay,
-        pending_pay=pending_pay
+        pending_pay=pending_pay,
+        to_timezone=to_timezone
     )
     
     return HTMLResponse(content=content)

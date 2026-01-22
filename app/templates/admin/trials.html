@@ -1,0 +1,114 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}试用授权{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4>试用申请管理</h4>
+    <button class="btn btn-outline-primary" onclick="location.reload()">
+        <i class="bi bi-arrow-clockwise"></i> 刷新
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>用户</th>
+                    <th>机器人</th>
+                    <th>申请时间</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr>
+                    <td>#{{ req.id }}</td>
+                    <td>
+                        <div>{{ req.username or "未知用户" }}</div>
+                        <small class="text-muted">ID: {{ req.user_id }}</small>
+                    </td>
+                    <td>Bot #{{ req.bot_id }}</td>
+                    <td>{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <span class="badge bg-warning text-dark">待审核</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="approveTrial({{ req.id }})">通过</button>
+                        <button class="btn btn-sm btn-danger ms-1" onclick="rejectTrial({{ req.id }})">拒绝</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">暂无待审核申请</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Approve Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">批准试用</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">授权天数</label>
+                    <input type="number" class="form-control" id="approveDays" value="1">
+                    <div class="form-text">默认试用 1 天，您也可以设置更长时间。</div>
+                </div>
+                <input type="hidden" id="currentReqId">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmApprove()">确认批准</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const approveModal = new bootstrap.Modal(document.getElementById('approveModal'));
+    
+    function approveTrial(id) {
+        document.getElementById('currentReqId').value = id;
+        approveModal.show();
+    }
+    
+    async function confirmApprove() {
+        const id = document.getElementById('currentReqId').value;
+        const days = document.getElementById('approveDays').value;
+        
+        const res = await apiCall(`/admin/trials/${id}/approve?days=${days}`, 'POST');
+        
+        if (res.success) {
+            approveModal.hide();
+            location.reload();
+        } else {
+            alert('操作失败: ' + res.error);
+        }
+    }
+    
+    async function rejectTrial(id) {
+        if (!confirm('确定要拒绝此申请吗？')) return;
+        
+        const res = await apiCall(`/admin/trials/${id}/reject`, 'POST');
+        if (res.success) {
+            location.reload();
+        } else {
+            alert('操作失败: ' + res.error);
+        }
+    }
+</script>
+{% endblock %}

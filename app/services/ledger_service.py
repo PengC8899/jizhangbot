@@ -4,12 +4,14 @@ from app.models.group import GroupConfig, Operator, LedgerRecord
 from app.models.bot import Bot
 from datetime import datetime, time, timedelta
 from app.core.cache import cache_service
+from app.core.utils import get_now
+
 
 class LedgerService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_group_config(self, group_id: int, bot_id: int) -> GroupConfig:
+    async def get_group_config(self, group_id: int, bot_id: int, group_name: str = None) -> GroupConfig:
         # 1. Try Cache
         cached_data = await cache_service.get_group_config(group_id, bot_id)
         if cached_data:
@@ -37,10 +39,15 @@ class LedgerService:
         result = await self.session.execute(stmt)
         config = result.scalars().first()
         if not config:
-            config = GroupConfig(group_id=group_id, bot_id=bot_id)
+            config = GroupConfig(group_id=group_id, bot_id=bot_id, group_name=group_name)
             self.session.add(config)
             await self.session.commit()
             await self.session.refresh(config)
+        elif group_name and config.group_name != group_name:
+            # Update group name if changed
+            config.group_name = group_name
+            await self.session.commit()
+            await cache_service.invalidate_group_config(group_id, bot_id)
         
         # Update Cache (Async, fire and forget logic ideally, but here await is fine)
         # We need to convert config to dict
@@ -61,7 +68,7 @@ class LedgerService:
     async def start_recording(self, group_id: int, bot_id: int):
         stmt = update(GroupConfig).where(
             and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)
-        ).values(is_active=True, active_start_time=datetime.now())
+        ).values(is_active=True, active_start_time=get_now())
         await self.session.execute(stmt)
         await self.session.commit()
         # Invalidate Cache
@@ -115,7 +122,8 @@ class LedgerService:
             operator_name=operator_name,
             original_text=original_text,
             fee_applied=config.fee_percent,
-            usd_rate_snapshot=config.usd_rate
+            usd_rate_snapshot=config.usd_rate,
+            created_at=get_now()
         )
         self.session.add(record)
         await self.session.commit()
@@ -134,14 +142,19 @@ class LedgerService:
         return result.scalars().all()
 
     async def delete_today_records(self, group_id: int, bot_id: int):
-        # Logic: 4AM to 4AM next day
-        now = datetime.now()
+        # Logic: 4AM to 4AM next day (Beijing Time)
+        now = get_now()
         if now.hour < 4:
             start_date = now.date() - timedelta(days=1)
         else:
             start_date = now.date()
             
+        # Create timezone-aware boundaries
+        tz = now.tzinfo
         start_time = datetime.combine(start_date, time(4, 0))
+        if tz:
+            start_time = tz.localize(start_time)
+            
         end_time = start_time + timedelta(hours=24)
         
         stmt = delete(LedgerRecord).where(
@@ -156,14 +169,19 @@ class LedgerService:
         await self.session.commit()
 
     async def get_daily_summary(self, group_id: int, bot_id: int):
-        # Logic: 4AM to 4AM next day
-        now = datetime.now()
+        # Logic: 4AM to 4AM next day (Beijing Time)
+        now = get_now()
         if now.hour < 4:
             start_date = now.date() - timedelta(days=1)
         else:
             start_date = now.date()
             
+        # Create timezone-aware boundaries
+        tz = now.tzinfo
         start_time = datetime.combine(start_date, time(4, 0))
+        if tz:
+            start_time = tz.localize(start_time)
+
         end_time = start_time + timedelta(hours=24)
         
         stmt = select(LedgerRecord).where(
