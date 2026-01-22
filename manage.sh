@@ -64,7 +64,7 @@ function logs_vps {
 function migrate_db {
     echo "Running Alembic Migrations on VPS..."
     ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
-        "cd $VPS_PATH && alembic upgrade head"
+        "cd $VPS_PATH && python3 -m alembic upgrade head"
     echo "Migration complete."
 }
 
