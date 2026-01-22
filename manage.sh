@@ -32,7 +32,7 @@ function deploy {
     echo "Deploying to $VPS_USER@$VPS_IP:$VPS_PATH ..."
     
     # Upload Code & Scripts
-    rsync -avz -e "ssh -i $VPS_KEY -o StrictHostKeyChecking=no" \
+    rsync -avz --delete -e "ssh -i $VPS_KEY -o StrictHostKeyChecking=no" \
         --exclude '__pycache__' --exclude '*.db' --exclude '.git' --exclude '.env' --exclude '*.pem' \
         ./app ./requirements.txt ./alembic.ini ./alembic ./scripts "$VPS_USER@$VPS_IP:$VPS_PATH/"
         
