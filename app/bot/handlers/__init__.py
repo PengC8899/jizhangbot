@@ -48,8 +48,15 @@ def setup_handlers(application: Application):
     
     # Transactions (Updated regex for negative & 'u')
     # Allow leading spaces: ^\s*
+    # Fix: Ensure +10000 is matched. 
+    # Current regex: r"^\s*(\+|入款|下发)" - This only checks prefix.
+    # The handler itself re-checks regex.
+    # Let's broaden it to include numbers starting with +
     application.add_handler(MessageHandler(filters.Regex(r"^\s*(\+|入款|下发)"), handle_transaction))
     
+    # Also add specific catch for just "+Number" which might be missed if filter is too strict
+    application.add_handler(MessageHandler(filters.Regex(r"^\s*\+\d+"), handle_transaction))
+
     # Operator Management
     application.add_handler(MessageHandler(filters.Regex(r"^设置操作人"), set_operator_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^显示操作人$"), show_operator_cmd))
