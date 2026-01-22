@@ -40,7 +40,7 @@ function deploy {
     
     # Install Deps & Restart
     ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
-        "cd $VPS_PATH && pip3 install -r requirements.txt && chmod +x scripts/*.sh && sudo systemctl restart $APP_NAME"
+        "cd $VPS_PATH && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt && chmod +x scripts/*.sh && sudo systemctl restart $APP_NAME"
     
     echo "Deployment complete! (Don't forget to run './manage.sh migrate' if DB schema changed)"
 }
@@ -64,7 +64,7 @@ function logs_vps {
 function migrate_db {
     echo "Running Alembic Migrations on VPS..."
     ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
-        "cd $VPS_PATH && python3 -m alembic upgrade head"
+        "cd $VPS_PATH && ./venv/bin/python -m alembic upgrade head"
     echo "Migration complete."
 }
 
