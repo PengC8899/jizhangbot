@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: huiying_app
+    restart: always
+    env_file: .env
+    volumes:
+      - .:/app
+    # In production, use internal network, don't expose 8000 to host if using nginx
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:latest
+    container_name: huiying_nginx
+    restart: always
+    ports:
+      - "80:80"
+      # - "443:443" # Enable for SSL
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+
+networks:
+  default:
+    driver: bridge

@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-telegram-bot[job-queue]
+sqlalchemy
+greenlet
+aiosqlite
+openpyxl
+pydantic-settings
+loguru
+jinja2
+python-multipart
+httpx
