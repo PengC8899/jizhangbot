@@ -1,5 +1,6 @@
 import httpx
 from loguru import logger
+from decimal import Decimal
 
 class PriceService:
     """
@@ -19,10 +20,13 @@ class PriceService:
         # Or just static for "reproduction" purpose.
         return self._mock_prices["okex"]
 
-    async def calculate(self, cny_amount: float, method: str = "card") -> float:
+    async def calculate(self, cny_amount: Decimal, method: str = "card") -> Decimal:
         prices = await self.get_prices()
-        rate = prices.get(method, 7.35)
-        if rate == 0: return 0.0
+        # Ensure rate is Decimal
+        rate_val = prices.get(method, 7.35)
+        rate = Decimal(str(rate_val))
+        
+        if rate == 0: return Decimal(0)
         return cny_amount / rate
 
 price_service = PriceService()

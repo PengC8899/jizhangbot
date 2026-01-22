@@ -3,8 +3,14 @@ from app.core.config import settings
 import json
 from loguru import logger
 import asyncio
-
 import time
+from decimal import Decimal
+
+class CacheEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
 
 class CacheService:
     def __init__(self):
@@ -58,7 +64,7 @@ class CacheService:
         try:
             data = await self.redis.get(key)
             if data:
-                return json.loads(data)
+                return json.loads(data, parse_float=Decimal)
         except Exception as e:
             # If connection refused, disable cache to avoid spam
             if "Connection refused" in str(e) or "Error 61" in str(e):
@@ -78,7 +84,7 @@ class CacheService:
             serializable = {k: str(v) if k in ['created_at', 'updated_at', 'active_start_time', 'expire_at'] and v else v 
                            for k, v in config_dict.items()}
             
-            await self.redis.setex(key, self.ttl, json.dumps(serializable))
+            await self.redis.setex(key, self.ttl, json.dumps(serializable, cls=CacheEncoder))
         except Exception as e:
             if "Connection refused" in str(e) or "Error 61" in str(e):
                 self.enabled = False

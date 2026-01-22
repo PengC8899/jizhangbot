@@ -19,9 +19,6 @@ class BotManager:
     async def start_bot(self, token: str, bot_db_id: int) -> bool:
         """
         Dynamically start a bot.
-        1. Validate token (implicitly by building app)
-        2. Initialize Application
-        3. Setup Webhook
         """
         try:
             if bot_db_id in self.apps:
@@ -29,39 +26,33 @@ class BotManager:
                 return True
 
             app = Application.builder().token(token).build()
-            
-            # Setup handlers
             setup_handlers(app)
             
-            # Initialize
             await app.initialize()
-            
-            # Store DB ID in bot_data for handlers to access
             app.bot_data["db_id"] = bot_db_id
-            
             await app.start()
             
-            # Get Bot Info (verify token works)
+            # Verify Token & Get Info
             bot_info = await app.bot.get_me()
             logger.info(f"Started Bot: {bot_info.username} (ID: {bot_info.id})")
 
-            # Setup Webhook
+            # Setup Webhook or Polling
             if settings.TG_MODE == "webhook":
                 webhook_url = f"https://{settings.DOMAIN}/telegram/webhook/{bot_db_id}"
-                # Add secret token for security
                 secret_token = f"secret_{bot_db_id}_{settings.SECRET_KEY}"[:32].replace("-", "") 
                 
                 await app.bot.set_webhook(
                     url=webhook_url,
                     secret_token=secret_token,
-                    allowed_updates=Update.ALL_TYPES # PTB specific
+                    allowed_updates=Update.ALL_TYPES
                 )
                 logger.info(f"Webhook set to {webhook_url}")
             else:
-                # Polling mode (for dev/testing if needed, but V3 emphasizes Webhook)
-                # In a multi-bot single-process setup, polling is tricky. 
-                # We would need to spawn a task for updater.start_polling()
-                await app.updater.start_polling()
+                # Polling mode: Run updater.start_polling() in a task to avoid blocking
+                # Important: In multi-bot setup, we can't block here.
+                # 'app.updater.start_polling()' is usually non-blocking if we don't await 'idle()'
+                # But let's be explicit.
+                await app.updater.start_polling() 
                 logger.info("Polling started")
 
             self.apps[bot_db_id] = app
@@ -71,20 +62,36 @@ class BotManager:
             logger.error(f"Failed to start bot {bot_db_id}: {e}")
             return False
 
+    async def start_all_bots(self, bots: list):
+        """
+        Parallel startup of all bots to reduce downtime and startup time.
+        """
+        tasks = [self.start_bot(bot.token, bot.id) for bot in bots]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        success_count = 0
+        for i, res in enumerate(results):
+            if res is True:
+                success_count += 1
+            else:
+                logger.error(f"Bot {bots[i].id} failed to start: {res}")
+        
+        logger.info(f"Parallel startup finished. Success: {success_count}/{len(bots)}")
+
     async def stop_bot(self, bot_db_id: int):
+        # ... (Same as before)
         if bot_db_id in self.apps:
             app = self.apps[bot_db_id]
-            
             if settings.TG_MODE == "webhook":
                 await app.bot.delete_webhook()
             else:
                 await app.updater.stop()
-            
             await app.stop()
             await app.shutdown()
             del self.apps[bot_db_id]
             logger.info(f"Stopped Bot {bot_db_id}")
 
+    # ... (reload_bot, get_app remain same) ...
     async def reload_bot(self, token: str, bot_db_id: int):
         await self.stop_bot(bot_db_id)
         await self.start_bot(token, bot_db_id)

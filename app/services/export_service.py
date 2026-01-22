@@ -5,29 +5,14 @@ from sqlalchemy import select, and_
 from app.models.group import LedgerRecord, GroupConfig
 from datetime import date, datetime, time, timedelta
 import io
+import asyncio
+from functools import partial
+from decimal import Decimal
 
-async def generate_group_ledger(session: AsyncSession, group_id: int, query_date: date) -> io.BytesIO:
-    # 1. Fetch Data (Using LedgerRecord)
-    # Logic: 4AM to 4AM next day
-    start_time = datetime.combine(query_date, time(4, 0))
-    end_time = start_time + timedelta(hours=24)
-    
-    stmt = select(LedgerRecord).where(
-        and_(
-            LedgerRecord.group_id == group_id,
-            LedgerRecord.created_at >= start_time,
-            LedgerRecord.created_at < end_time
-        )
-    ).order_by(LedgerRecord.created_at)
-    
-    result = await session.execute(stmt)
-    transactions = result.scalars().all()
-    
-    # Separate types
-    deposits = [t for t in transactions if t.type == "deposit"]
-    payouts = [t for t in transactions if t.type == "payout"]
-    
-    # 2. Create Workbook
+def _create_excel_sync(data_deposits: list, data_payouts: list, fee_percent: Decimal, query_date: date) -> io.BytesIO:
+    """
+    Synchronous Excel generation to be run in a thread pool.
+    """
     wb = openpyxl.Workbook()
     
     # Styles
@@ -50,33 +35,30 @@ async def generate_group_ledger(session: AsyncSession, group_id: int, query_date
     ws1.title = "入款明细"
     style_header(ws1, ["时间", "金额", "操作人", "备注/原始指令"])
     
-    total_deposit = 0.0
-    for t in deposits:
-        ws1.append([t.created_at.strftime('%H:%M:%S'), t.amount, t.operator_name, t.original_text])
-        total_deposit += t.amount
+    total_deposit = Decimal(0)
+    for t in data_deposits:
+        # Assuming t['amount'] is already Decimal or compatible
+        amt = t['amount'] if isinstance(t['amount'], Decimal) else Decimal(str(t['amount']))
+        ws1.append([t['created_at'].strftime('%H:%M:%S'), amt, t['operator_name'], t['original_text']])
+        total_deposit += amt
     
     # Sheet 2: 下发 (Payouts)
     ws2 = wb.create_sheet("下发明细")
     style_header(ws2, ["时间", "金额", "操作人", "备注/原始指令"])
     
-    total_payout = 0.0
-    for t in payouts:
-        ws2.append([t.created_at.strftime('%H:%M:%S'), t.amount, t.operator_name, t.original_text])
-        total_payout += t.amount
+    total_payout = Decimal(0)
+    for t in data_payouts:
+        amt = t['amount'] if isinstance(t['amount'], Decimal) else Decimal(str(t['amount']))
+        ws2.append([t['created_at'].strftime('%H:%M:%S'), amt, t['operator_name'], t['original_text']])
+        total_payout += amt
 
     # Sheet 3: 汇总 (Summary)
     ws3 = wb.create_sheet("每日汇总")
     ws3.column_dimensions['A'].width = 20
     ws3.column_dimensions['B'].width = 15
     
-    # Get Config for Fee
-    stmt_config = select(GroupConfig).where(GroupConfig.group_id == group_id)
-    res_config = await session.execute(stmt_config)
-    config = res_config.scalars().first()
-    fee_percent = config.fee_percent if config else 0.0
-    
     # Calculate Fees
-    fee = total_deposit * (fee_percent / 100.0)
+    fee = total_deposit * (fee_percent / Decimal(100))
     should_pay = total_deposit - fee
     pending_pay = should_pay - total_payout
     
@@ -97,4 +79,52 @@ async def generate_group_ledger(session: AsyncSession, group_id: int, query_date
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
+    return output
+
+async def generate_group_ledger(session: AsyncSession, group_id: int, query_date: date) -> io.BytesIO:
+    # 1. Fetch Data (Async)
+    # Logic: 4AM to 4AM next day
+    start_time = datetime.combine(query_date, time(4, 0))
+    end_time = start_time + timedelta(hours=24)
+    
+    stmt = select(LedgerRecord).where(
+        and_(
+            LedgerRecord.group_id == group_id,
+            LedgerRecord.created_at >= start_time,
+            LedgerRecord.created_at < end_time
+        )
+    ).order_by(LedgerRecord.created_at)
+    
+    result = await session.execute(stmt)
+    transactions = result.scalars().all()
+    
+    # Get Config for Fee
+    stmt_config = select(GroupConfig).where(GroupConfig.group_id == group_id)
+    res_config = await session.execute(stmt_config)
+    config = res_config.scalars().first()
+    fee_percent = config.fee_percent if config else 0.0
+    
+    # 2. Prepare Data (Detach from Session)
+    deposits = []
+    payouts = []
+    
+    for t in transactions:
+        item = {
+            "created_at": t.created_at,
+            "amount": t.amount,
+            "operator_name": t.operator_name,
+            "original_text": t.original_text
+        }
+        if t.type == "deposit":
+            deposits.append(item)
+        elif t.type == "payout":
+            payouts.append(item)
+            
+    # 3. Offload Excel Generation to Thread Pool
+    loop = asyncio.get_running_loop()
+    output = await loop.run_in_executor(
+        None, 
+        partial(_create_excel_sync, deposits, payouts, fee_percent, query_date)
+    )
+    
     return output

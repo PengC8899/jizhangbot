@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     SENTRY_DSN: str = "" # Optional
     TIMEZONE: str = "Asia/Shanghai"
+    
+    # Admin Auth
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin888" # Change this in production!
 
     class Config:
         env_file = ".env"

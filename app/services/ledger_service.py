@@ -1,11 +1,12 @@
-from sqlalchemy import select, update, delete, and_
+from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.group import GroupConfig, Operator, LedgerRecord
 from app.models.bot import Bot
 from datetime import datetime, time, timedelta
 from app.core.cache import cache_service
 from app.core.utils import get_now
-
+from decimal import Decimal
+from typing import Union
 
 class LedgerService:
     def __init__(self, session: AsyncSession):
@@ -15,24 +16,22 @@ class LedgerService:
         # 1. Try Cache
         cached_data = await cache_service.get_group_config(group_id, bot_id)
         if cached_data:
-            # We need to return an object that behaves like GroupConfig
-            # Ideally we return a detached instance or a Pydantic model
-            # For quick integration, we'll return a pseudo-object or fetch from DB if complex logic needed
-            # But "get_group_config" usually returns an attached instance for updates.
-            # If we just need read access, cache is fine.
-            # If we need to UPDATE, we must fetch from DB.
-            # This method is used for both. This is a design challenge.
+            # Reconstruct GroupConfig object from dict
+            # Be careful: This is a detached object and cannot be used for updates directly without merging
+            # However, for read-only access it's perfect.
+            # We must convert string decimals back if JSON didn't do it (our custom loader does)
             
-            # Strategy: If we are in a read-heavy context, use cache.
-            # But the current signature returns a SQLAlchemy Model which is often used for updates.
-            # To be safe and simple: Use cache only for 'is_active' checks or read-only displays.
-            # But the request is to "reduce DB pressure".
+            # Since cached_data comes from json.loads(..., parse_float=Decimal), numeric fields are already Decimal/float
+            # But SQLAlchemy expects models.
             
-            # Let's keep it simple: If cache exists, we return a detached object.
-            # BUT: detached objects can't be used for `session.commit()` updates directly without merging.
-            # So, for now, let's ONLY use cache for `is_group_active` check which is the most frequent call.
-            pass
-
+            # To avoid complexity with detached instances, we only use cache for specific read-heavy fields
+            # or return a Pydantic model. But the signature says -> GroupConfig.
+            
+            # For now, let's just return the object manually constructed.
+            # Warning: This object is NOT attached to the session.
+            config = GroupConfig(**cached_data)
+            return config
+        
         stmt = select(GroupConfig).where(
             and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)
         )
@@ -49,8 +48,8 @@ class LedgerService:
             await self.session.commit()
             await cache_service.invalidate_group_config(group_id, bot_id)
         
-        # Update Cache (Async, fire and forget logic ideally, but here await is fine)
-        # We need to convert config to dict
+        # Update Cache
+        # Convert config to dict
         config_dict = {c.name: getattr(config, c.name) for c in config.__table__.columns}
         await cache_service.set_group_config(group_id, bot_id, config_dict)
         
@@ -71,7 +70,6 @@ class LedgerService:
         ).values(is_active=True, active_start_time=get_now())
         await self.session.execute(stmt)
         await self.session.commit()
-        # Invalidate Cache
         await cache_service.invalidate_group_config(group_id, bot_id)
 
     async def stop_recording(self, group_id: int, bot_id: int):
@@ -80,18 +78,15 @@ class LedgerService:
         ).values(is_active=False)
         await self.session.execute(stmt)
         await self.session.commit()
-        # Invalidate Cache
         await cache_service.invalidate_group_config(group_id, bot_id)
-
+        
     async def add_operator(self, group_id: int, user_id: int, username: str):
-        # Check if exists
         stmt = select(Operator).where(
             and_(Operator.group_id == group_id, Operator.user_id == user_id)
         )
         result = await self.session.execute(stmt)
         if result.scalars().first():
-            return # Already exists
-        
+            return 
         op = Operator(group_id=group_id, user_id=user_id, username=username)
         self.session.add(op)
         await self.session.commit()
@@ -102,114 +97,122 @@ class LedgerService:
         )
         await self.session.execute(stmt)
         await self.session.commit()
-    
+        
     async def get_operators(self, group_id: int):
         stmt = select(Operator).where(Operator.group_id == group_id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def record_transaction(self, bot_id: int, group_id: int, type: str, amount: float, 
+    async def record_transaction(self, bot_id: int, group_id: int, type_: str, amount: Union[Decimal, float, str], 
                                operator_id: int, operator_name: str, original_text: str):
-        # Get current config for snapshots
+        # 1. Convert to Decimal for storage
+        if isinstance(amount, Decimal):
+            amount_decimal = amount
+        else:
+            amount_decimal = Decimal(str(amount))
+        
+        # 2. Get Config for Snapshot
         config = await self.get_group_config(group_id, bot_id)
         
+        # 3. Calculate Fee Snapshot
+        # fee_percent is now Numeric/Decimal
+        fee_applied = Decimal(0)
+        if type_ == "deposit" and config.fee_percent > 0:
+            fee_applied = amount_decimal * (config.fee_percent / Decimal(100))
+            
         record = LedgerRecord(
             bot_id=bot_id,
             group_id=group_id,
-            type=type,
-            amount=amount,
+            type=type_,
+            amount=amount_decimal,
             operator_id=operator_id,
             operator_name=operator_name,
             original_text=original_text,
-            fee_applied=config.fee_percent,
-            usd_rate_snapshot=config.usd_rate,
-            created_at=get_now()
+            fee_applied=fee_applied,
+            usd_rate_snapshot=config.usd_rate
         )
         self.session.add(record)
         await self.session.commit()
-        return record
+        
+    async def get_daily_summary(self, group_id: int, bot_id: int) -> dict:
+        # 4AM Logic
+        now = get_now()
+        if now.hour < 4:
+            start_date = now.date() - timedelta(days=1)
+        else:
+            start_date = now.date()
+        start_time = datetime.combine(start_date, time(4, 0))
+        # Ensure timezone
+        if now.tzinfo:
+            start_time = now.tzinfo.localize(start_time)
+            
+        # Aggregation using SQL for efficiency
+        # CAST to ensure correct summation if DB driver returns weird types
+        stmt = select(
+            LedgerRecord.type,
+            func.sum(LedgerRecord.amount).label("total"),
+            func.count(LedgerRecord.id).label("count")
+        ).where(
+            and_(
+                LedgerRecord.group_id == group_id,
+                LedgerRecord.bot_id == bot_id,
+                LedgerRecord.created_at >= start_time
+            )
+        ).group_by(LedgerRecord.type)
+        
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        
+        summary = {
+            "total_deposit": Decimal(0),
+            "count_deposit": 0,
+            "total_payout": Decimal(0),
+            "count_payout": 0
+        }
+        
+        for row in rows:
+            # row.total might be Decimal or Float depending on DB driver
+            val = Decimal(str(row.total)) if row.total is not None else Decimal(0)
+            if row.type == "deposit":
+                summary["total_deposit"] = val
+                summary["count_deposit"] = row.count
+            elif row.type == "payout":
+                summary["total_payout"] = val
+                summary["count_payout"] = row.count
+                
+        return summary
 
     async def get_recent_records(self, group_id: int, bot_id: int, limit: int = 5, record_type: str = None):
         stmt = select(LedgerRecord).where(
-            and_(LedgerRecord.group_id == group_id, LedgerRecord.bot_id == bot_id)
+            and_(
+                LedgerRecord.group_id == group_id,
+                LedgerRecord.bot_id == bot_id
+            )
         )
-        
         if record_type:
             stmt = stmt.where(LedgerRecord.type == record_type)
             
         stmt = stmt.order_by(LedgerRecord.created_at.desc()).limit(limit)
+        
         result = await self.session.execute(stmt)
         return result.scalars().all()
-
+        
     async def delete_today_records(self, group_id: int, bot_id: int):
-        # Logic: 4AM to 4AM next day (Beijing Time)
+        # 4AM Logic
         now = get_now()
         if now.hour < 4:
             start_date = now.date() - timedelta(days=1)
         else:
             start_date = now.date()
-            
-        # Create timezone-aware boundaries
-        tz = now.tzinfo
         start_time = datetime.combine(start_date, time(4, 0))
-        if tz:
-            start_time = tz.localize(start_time)
-            
-        end_time = start_time + timedelta(hours=24)
-        
+        if now.tzinfo: start_time = now.tzinfo.localize(start_time)
+
         stmt = delete(LedgerRecord).where(
             and_(
                 LedgerRecord.group_id == group_id,
                 LedgerRecord.bot_id == bot_id,
-                LedgerRecord.created_at >= start_time,
-                LedgerRecord.created_at < end_time
+                LedgerRecord.created_at >= start_time
             )
         )
         await self.session.execute(stmt)
         await self.session.commit()
-
-    async def get_daily_summary(self, group_id: int, bot_id: int):
-        # Logic: 4AM to 4AM next day (Beijing Time)
-        now = get_now()
-        if now.hour < 4:
-            start_date = now.date() - timedelta(days=1)
-        else:
-            start_date = now.date()
-            
-        # Create timezone-aware boundaries
-        tz = now.tzinfo
-        start_time = datetime.combine(start_date, time(4, 0))
-        if tz:
-            start_time = tz.localize(start_time)
-
-        end_time = start_time + timedelta(hours=24)
-        
-        stmt = select(LedgerRecord).where(
-            and_(
-                LedgerRecord.group_id == group_id,
-                LedgerRecord.bot_id == bot_id,
-                LedgerRecord.created_at >= start_time,
-                LedgerRecord.created_at < end_time
-            )
-        ).order_by(LedgerRecord.created_at.desc())
-        
-        result = await self.session.execute(stmt)
-        records = result.scalars().all()
-        
-        deposits = [r for r in records if r.type == 'deposit']
-        payouts = [r for r in records if r.type == 'payout']
-        
-        total_deposit = sum(r.amount for r in deposits)
-        total_payout = sum(r.amount for r in payouts)
-        
-        return {
-            "deposits": deposits,
-            "payouts": payouts,
-            "total_deposit": total_deposit,
-            "total_payout": total_payout,
-            "count_deposit": len(deposits),
-            "count_payout": len(payouts),
-            "date_str": start_date.strftime("%Y-%m-%d"),
-            "start_time": start_time,
-            "end_time": end_time
-        }

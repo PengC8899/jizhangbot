@@ -6,6 +6,7 @@ from app.models.group import GroupConfig
 from sqlalchemy.ext.asyncio import AsyncSession
 from jinja2 import Template
 from app.core.utils import to_timezone
+from decimal import Decimal
 
 router = APIRouter()
 
@@ -32,8 +33,9 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
     summary = await service.get_daily_summary(group_id, bot_id)
     config = await service.get_group_config(group_id, bot_id)
     
+    # Use Decimal for calculations
     total_in = summary['total_deposit']
-    fee = total_in * (config.fee_percent / 100.0)
+    fee = total_in * (config.fee_percent / Decimal(100))
     net_in = total_in - fee
     should_pay = net_in
     pending_pay = should_pay - summary['total_payout']

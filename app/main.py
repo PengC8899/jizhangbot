@@ -6,6 +6,7 @@ from app.core.database import engine, Base, AsyncSessionLocal
 from app.core.bot_manager import bot_manager
 from app.models.bot import Bot
 from app.models.group import GroupConfig, Operator, LedgerRecord, LicenseCode
+from app.models.audit import AuditLog
 from sqlalchemy import select
 from loguru import logger
 from app.api import admin, webhook, dashboard
@@ -32,12 +33,13 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Bot).where(Bot.status == "active"))
         bots = result.scalars().all()
-        for bot in bots:
-            logger.info(f"Loading Bot: {bot.name} ({bot.id})")
-            # We use create_task to not block startup if one bot fails or takes time
-            # But strictly speaking we should await to ensure they are ready. 
-            # Given "No system restart" requirement, parallel start is better.
-            await bot_manager.start_bot(bot.token, bot.id)
+        
+        if bots:
+            logger.info(f"Found {len(bots)} active bots. Starting them in parallel...")
+            # Use the new parallel startup
+            await bot_manager.start_all_bots(bots)
+        else:
+            logger.info("No active bots found.")
             
     yield
     

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, BigInteger
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, BigInteger, Numeric
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from sqlalchemy.sql import func
@@ -16,11 +16,11 @@ class GroupConfig(Base):
     active_start_time = Column(DateTime, nullable=True) # Record when started
     
     # Rates & Configs
-    fee_percent = Column(Float, default=0.0) # 费率
-    usd_rate = Column(Float, default=0.0) # 美元汇率 (0 = hidden)
-    php_rate = Column(Float, default=0.0) # 比索汇率
-    myr_rate = Column(Float, default=0.0) # 马币汇率
-    thb_rate = Column(Float, default=0.0) # 泰铢汇率
+    fee_percent = Column(Numeric(10, 2), default=0.00) # 费率 (Decimal)
+    usd_rate = Column(Numeric(10, 4), default=0.0000) # 美元汇率 (0 = hidden)
+    php_rate = Column(Numeric(10, 4), default=0.0000) # 比索汇率
+    myr_rate = Column(Numeric(10, 4), default=0.0000) # 马币汇率
+    thb_rate = Column(Numeric(10, 4), default=0.0000) # 泰铢汇率
     
     # Display Modes
     decimal_mode = Column(Boolean, default=True) # True=Show decimals, False=No decimals
@@ -62,12 +62,12 @@ class LedgerRecord(Base):
     operator_name = Column(String, nullable=True)
     
     type = Column(String) # "deposit" (入款), "payout" (下发)
-    amount = Column(Float)
+    amount = Column(Numeric(18, 4)) # Supports high precision
     currency = Column(String, default="RMB") # Base currency usually RMB/CNY
     
     # Snapshot of rates at the time of transaction
-    fee_applied = Column(Float, default=0.0)
-    usd_rate_snapshot = Column(Float, default=0.0)
+    fee_applied = Column(Numeric(18, 4), default=0.0)
+    usd_rate_snapshot = Column(Numeric(10, 4), default=0.0)
     
     created_at = Column(DateTime, default=func.now())
     original_text = Column(String, nullable=True) # The command text

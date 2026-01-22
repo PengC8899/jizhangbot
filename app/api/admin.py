@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Form
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from pydantic import BaseModel
 from datetime import date, datetime, timedelta
 import json
+import secrets
 from telegram.ext import Application
 from telegram.error import InvalidToken
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.bot import Bot
 from app.models.transaction import Transaction
 from app.models.group import GroupConfig, Operator, LedgerRecord, LicenseCode, TrialRequest
@@ -21,10 +23,47 @@ from app.core.utils import to_timezone, get_now
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
+# --- Auth ---
+COOKIE_NAME = "admin_session"
+
+async def get_current_admin(request: Request):
+    session_token = request.cookies.get(COOKIE_NAME)
+    # Simple static token check for MVP. 
+    # In production, use JWT or proper Session Store.
+    # Here we hash the password as the token for simplicity (Not secure for real enterprise but better than nothing)
+    expected_token = f"auth_{settings.ADMIN_USERNAME}_{settings.SECRET_KEY}"
+    if session_token != expected_token:
+        if "ui" in request.url.path:
+             # Redirect for UI
+             raise HTTPException(status_code=307, headers={"Location": "/admin/login"})
+        else:
+             raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("admin/login.html", {"request": request})
+
+@router.post("/login", response_class=HTMLResponse)
+async def login_action(request: Request, username: str = Form(...), password: str = Form(...)):
+    if username == settings.ADMIN_USERNAME and password == settings.ADMIN_PASSWORD:
+        response = RedirectResponse(url="/admin/ui/dashboard", status_code=303)
+        token = f"auth_{settings.ADMIN_USERNAME}_{settings.SECRET_KEY}"
+        response.set_cookie(key=COOKIE_NAME, value=token, httponly=True, max_age=86400) # 1 day
+        return response
+    
+    return templates.TemplateResponse("admin/login.html", {"request": request, "error": "Invalid credentials"})
+
+@router.get("/logout")
+async def logout(request: Request):
+    response = RedirectResponse(url="/admin/login", status_code=303)
+    response.delete_cookie(COOKIE_NAME)
+    return response
+
 # --- UI Routes ---
 
 @router.get("/ui/dashboard", response_class=HTMLResponse)
-async def dashboard_ui(request: Request, db: AsyncSession = Depends(get_db)):
+async def dashboard_ui(request: Request, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     # Stats
     bot_count = await db.scalar(select(func.count(Bot.id)))
     group_count = await db.scalar(select(func.count(GroupConfig.id)).where(GroupConfig.is_active == True))
@@ -56,13 +95,13 @@ async def dashboard_ui(request: Request, db: AsyncSession = Depends(get_db)):
     return templates.TemplateResponse("admin/dashboard.html", {"request": request, "stats": stats, "page": "dashboard"})
 
 @router.get("/ui/trials", response_class=HTMLResponse)
-async def trials_ui(request: Request, db: AsyncSession = Depends(get_db)):
+async def trials_ui(request: Request, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     result = await db.execute(select(TrialRequest).where(TrialRequest.status == "pending").order_by(TrialRequest.created_at.desc()))
     requests = result.scalars().all()
     return templates.TemplateResponse("admin/trials.html", {"request": request, "requests": requests, "page": "trials"})
 
 @router.get("/ui/bots", response_class=HTMLResponse)
-async def bots_ui(request: Request, db: AsyncSession = Depends(get_db)):
+async def bots_ui(request: Request, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     result = await db.execute(select(Bot))
     bots = result.scalars().all()
     
@@ -79,7 +118,7 @@ async def bots_ui(request: Request, db: AsyncSession = Depends(get_db)):
     return templates.TemplateResponse("admin/bots.html", {"request": request, "bots": bots, "page": "bots"})
 
 @router.get("/ui/groups", response_class=HTMLResponse)
-async def groups_ui(request: Request, db: AsyncSession = Depends(get_db)):
+async def groups_ui(request: Request, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     # List all groups that have config
     result = await db.execute(select(GroupConfig).order_by(GroupConfig.updated_at.desc()))
     groups = result.scalars().all()
@@ -87,6 +126,9 @@ async def groups_ui(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 # --- API Endpoints ---
+# Note: Ideally API endpoints should also be protected by Depends(get_current_admin)
+# But some might be used by external services (unlikely here).
+# Let's protect sensitive ones.
 
 class BotButtonConfig(BaseModel):
     bill_text: str = None
@@ -98,7 +140,7 @@ class BotButtonConfig(BaseModel):
     support_url: str = None
 
 @router.post("/bot/{bot_id}/buttons")
-async def update_bot_buttons(bot_id: int, config: BotButtonConfig, db: AsyncSession = Depends(get_db)):
+async def update_bot_buttons(bot_id: int, config: BotButtonConfig, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     bot = await db.get(Bot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="Bot not found")
@@ -115,7 +157,7 @@ class GroupMessage(BaseModel):
     text: str
 
 @router.post("/bot/{bot_id}/group/{group_id}/message")
-async def send_group_message(bot_id: int, group_id: int, msg: GroupMessage, db: AsyncSession = Depends(get_db)):
+async def send_group_message(bot_id: int, group_id: int, msg: GroupMessage, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     # 1. Get Bot Instance
     app = bot_manager.apps.get(bot_id)
     if not app:
@@ -129,7 +171,7 @@ async def send_group_message(bot_id: int, group_id: int, msg: GroupMessage, db: 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/broadcast")
-async def broadcast_message(msg: GroupMessage, db: AsyncSession = Depends(get_db)):
+async def broadcast_message(msg: GroupMessage, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     """Broadcast message to ALL active groups across ALL bots"""
     # 1. Get all active groups
     stmt = select(GroupConfig).where(GroupConfig.is_active == True)
@@ -158,7 +200,7 @@ class BotCreate(BaseModel):
     name: str = None
 
 @router.post("/bot/create")
-async def create_bot(bot_in: BotCreate, db: AsyncSession = Depends(get_db)):
+async def create_bot(bot_in: BotCreate, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     """
     Online Bot Registration (No Restart)
     1. Check Token
@@ -199,7 +241,7 @@ async def create_bot(bot_in: BotCreate, db: AsyncSession = Depends(get_db)):
     return {"status": "success", "bot_id": new_bot.id, "name": new_bot.name}
 
 @router.post("/license/generate")
-async def generate_license(days: int, db: AsyncSession = Depends(get_db)):
+async def generate_license(days: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     """Generate a new license code"""
     service = LicenseService(db)
     code = await service.generate_code(days)
