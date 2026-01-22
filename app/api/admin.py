@@ -13,7 +13,6 @@ from telegram.error import InvalidToken
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.bot import Bot
-from app.models.transaction import Transaction
 from app.models.group import GroupConfig, Operator, LedgerRecord, LicenseCode, TrialRequest
 from app.core.bot_manager import bot_manager
 from app.services.license_service import LicenseService
