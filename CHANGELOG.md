@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-01-22
+
+### Added
+- **Redis Caching**: Implemented `CacheService` to cache group configurations, significantly reducing database read pressure.
+- **Sentry Integration**: Added Sentry support for real-time error monitoring in production.
+- **Connection Pooling**: Configured SQLAlchemy connection pool with `pool_pre_ping` for better stability.
+
+### Changed
+- **Database Performance**: Enabled WAL (Write-Ahead Logging) mode for SQLite to improve concurrency support.
+- **Dependencies**: Added `redis` and `sentry-sdk` to `requirements.txt`.
+
 ## [0.2.0] - 2026-01-22
 
 ### Added

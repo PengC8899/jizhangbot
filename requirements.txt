@@ -10,3 +10,5 @@ loguru
 jinja2
 python-multipart
 httpx
+redis
+sentry-sdk

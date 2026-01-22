@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+import sentry_sdk
 from app.core.config import settings
 from app.core.database import engine, Base, AsyncSessionLocal
 from app.core.bot_manager import bot_manager
@@ -9,6 +10,14 @@ from sqlalchemy import select
 from loguru import logger
 from app.api import admin, webhook, dashboard
 from app.api.bill import router as bill_router
+
+# Initialize Sentry
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

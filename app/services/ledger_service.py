@@ -3,12 +3,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.group import GroupConfig, Operator, LedgerRecord
 from app.models.bot import Bot
 from datetime import datetime, time, timedelta
+from app.core.cache import cache_service
 
 class LedgerService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
     async def get_group_config(self, group_id: int, bot_id: int) -> GroupConfig:
+        # 1. Try Cache
+        cached_data = await cache_service.get_group_config(group_id, bot_id)
+        if cached_data:
+            # We need to return an object that behaves like GroupConfig
+            # Ideally we return a detached instance or a Pydantic model
+            # For quick integration, we'll return a pseudo-object or fetch from DB if complex logic needed
+            # But "get_group_config" usually returns an attached instance for updates.
+            # If we just need read access, cache is fine.
+            # If we need to UPDATE, we must fetch from DB.
+            # This method is used for both. This is a design challenge.
+            
+            # Strategy: If we are in a read-heavy context, use cache.
+            # But the current signature returns a SQLAlchemy Model which is often used for updates.
+            # To be safe and simple: Use cache only for 'is_active' checks or read-only displays.
+            # But the request is to "reduce DB pressure".
+            
+            # Let's keep it simple: If cache exists, we return a detached object.
+            # BUT: detached objects can't be used for `session.commit()` updates directly without merging.
+            # So, for now, let's ONLY use cache for `is_group_active` check which is the most frequent call.
+            pass
+
         stmt = select(GroupConfig).where(
             and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)
         )
@@ -19,9 +41,20 @@ class LedgerService:
             self.session.add(config)
             await self.session.commit()
             await self.session.refresh(config)
+        
+        # Update Cache (Async, fire and forget logic ideally, but here await is fine)
+        # We need to convert config to dict
+        config_dict = {c.name: getattr(config, c.name) for c in config.__table__.columns}
+        await cache_service.set_group_config(group_id, bot_id, config_dict)
+        
         return config
 
     async def is_group_active(self, group_id: int, bot_id: int) -> bool:
+        # Optimized: Check Cache First
+        cached = await cache_service.get_group_config(group_id, bot_id)
+        if cached:
+            return cached.get('is_active', False)
+            
         config = await self.get_group_config(group_id, bot_id)
         return config.is_active
 
@@ -31,6 +64,8 @@ class LedgerService:
         ).values(is_active=True, active_start_time=datetime.now())
         await self.session.execute(stmt)
         await self.session.commit()
+        # Invalidate Cache
+        await cache_service.invalidate_group_config(group_id, bot_id)
 
     async def stop_recording(self, group_id: int, bot_id: int):
         stmt = update(GroupConfig).where(
@@ -38,6 +73,8 @@ class LedgerService:
         ).values(is_active=False)
         await self.session.execute(stmt)
         await self.session.commit()
+        # Invalidate Cache
+        await cache_service.invalidate_group_config(group_id, bot_id)
 
     async def add_operator(self, group_id: int, user_id: int, username: str):
         # Check if exists
