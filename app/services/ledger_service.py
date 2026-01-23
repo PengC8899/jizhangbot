@@ -103,6 +103,32 @@ class LedgerService:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def get_daily_records(self, group_id: int, bot_id: int = None) -> list[LedgerRecord]:
+        # 4AM Logic
+        now = get_now()
+        if now.hour < 4:
+            start_date = now.date() - timedelta(days=1)
+        else:
+            start_date = now.date()
+        start_time = datetime.combine(start_date, time(4, 0))
+        # Ensure timezone
+        if now.tzinfo:
+            start_time = now.tzinfo.localize(start_time)
+            
+        stmt = select(LedgerRecord).where(
+            and_(
+                LedgerRecord.group_id == group_id,
+                LedgerRecord.created_at >= start_time
+            )
+        )
+        if bot_id:
+            stmt = stmt.where(LedgerRecord.bot_id == bot_id)
+            
+        stmt = stmt.order_by(LedgerRecord.created_at.desc())
+        
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
     async def record_transaction(self, bot_id: int, group_id: int, type_: str, amount: Union[Decimal, float, str], 
                                operator_id: int, operator_name: str, original_text: str):
         # 1. Convert to Decimal for storage

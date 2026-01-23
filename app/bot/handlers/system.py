@@ -37,6 +37,24 @@ async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT
         is_valid = await service.check_license(chat_id, bot_id, user_id)
         
         if not is_valid:
+            # Check if it looks like a user attempting to use the bot
+            # Only reply for likely commands to avoid spamming normal chat
+            if update.message and update.message.text:
+                msg_text = update.message.text.strip()
+                if (msg_text.startswith("+") or 
+                    msg_text.startswith("入款") or 
+                    msg_text.startswith("下发") or 
+                    msg_text == "显示账单" or
+                    msg_text == "清理今天数据"):
+                    
+                    try:
+                        await update.message.reply_text(
+                            "⚠️ 机器人未激活或授权已过期。\n"
+                            "请发送 '试用' 获取试用时长，或联系管理员获取激活码。"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send license warning: {e}")
+            
             # Rate limit warning: In future, use redis to rate limit this warning
             return False
         return True

@@ -66,8 +66,17 @@ def setup_handlers(application: Application):
     application.add_handler(MessageHandler(filters.Regex(r"^显示操作人$"), show_operator_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^删除操作人"), delete_operator_cmd))
 
+    # Fallback logging handler to debug missed messages
+    # This should be at the very end
+    async def log_missed_message(update: Update, context):
+        if update.message and update.message.text:
+            from loguru import logger
+            logger.info(f"Missed message: {update.message.text}")
+            
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, log_missed_message), group=99)
+
     # Fallback handler to catch messages that might be commands but not matched by strict regex
-    application.add_handler(MessageHandler(filters.Regex(r"^\s*(\+|-)?\d+"), handle_transaction))
+    # application.add_handler(MessageHandler(filters.Regex(r"^\s*(\+|-)?\d+"), handle_transaction))
 
     # Menu Handlers
     application.add_handler(MessageHandler(filters.Regex(r"^试用$"), trial_cmd))

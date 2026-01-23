@@ -4,9 +4,11 @@ from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
 from app.models.group import GroupConfig
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from jinja2 import Template
-from app.core.utils import to_timezone
+from app.core.utils import to_timezone, get_now
 from decimal import Decimal
+from datetime import timedelta
 
 router = APIRouter()
 
@@ -19,26 +21,50 @@ async def get_db():
 async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depends(get_db)):
     service = LedgerService(db)
     
-    # We assume bot_id=1 for now as per current simple setup, 
-    # or we can try to find config first.
-    # But usually group_id is unique enough or passed with bot_id.
-    # Let's just find the first config matching this group_id to get bot_id if needed,
-    # or just query ledger directly by group_id.
+    # 1. Find Config & Bot ID
+    stmt = select(GroupConfig).where(GroupConfig.group_id == group_id)
+    result = await db.execute(stmt)
+    config = result.scalars().first()
     
-    # Quick fix: Hardcode bot_id=1 or find it.
-    # Better: Query ledger directly ignoring bot_id? No, index uses it.
-    # Let's assume bot_id=1 for MVP.
-    bot_id = 1 
+    if not config:
+        # Fallback or Error
+        return HTMLResponse("<h1>未找到该群组的账单配置</h1>", status_code=404)
+        
+    bot_id = config.bot_id
     
-    summary = await service.get_daily_summary(group_id, bot_id)
-    config = await service.get_group_config(group_id, bot_id)
+    # 2. Get Records (Full List)
+    records = await service.get_daily_records(group_id, bot_id)
     
-    # Use Decimal for calculations
-    total_in = summary['total_deposit']
-    fee = total_in * (config.fee_percent / Decimal(100))
-    net_in = total_in - fee
-    should_pay = net_in
-    pending_pay = should_pay - summary['total_payout']
+    # 3. Process Records
+    deposits = []
+    payouts = []
+    
+    total_in = Decimal(0)
+    total_out = Decimal(0)
+    
+    for r in records:
+        if r.type == 'deposit':
+            deposits.append(r)
+            total_in += r.amount
+        elif r.type == 'payout':
+            payouts.append(r)
+            total_out += r.amount
+            
+    # 4. Calculate Stats
+    fee_percent = config.fee_percent if config.fee_percent is not None else Decimal(0)
+    usd_rate = config.usd_rate if config.usd_rate is not None else Decimal(0)
+    
+    fee = total_in * (fee_percent / Decimal(100))
+    should_pay = total_in - fee
+    pending_pay = should_pay - total_out
+    
+    # 5. Date String (4AM Logic)
+    now = get_now()
+    if now.hour < 4:
+         date_obj = now.date() - timedelta(days=1)
+    else:
+         date_obj = now.date()
+    date_str = date_obj.strftime('%Y-%m-%d')
     
     html_template = """
     <!DOCTYPE html>
@@ -186,22 +212,19 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
     </html>
     """
     
-    # Sort lists
-    summary['deposits'].sort(key=lambda x: x.created_at, reverse=True)
-    summary['payouts'].sort(key=lambda x: x.created_at, reverse=True)
-    
+    # Render
     t = Template(html_template)
     content = t.render(
         group_id=group_id,
-        date_str=summary['date_str'],
-        deposits=summary['deposits'],
-        payouts=summary['payouts'],
+        date_str=date_str,
+        deposits=deposits,
+        payouts=payouts,
         total_deposit=total_in,
-        total_payout=summary['total_payout'],
-        fee_percent=config.fee_percent,
-        usd_rate=config.usd_rate,
         should_pay=should_pay,
+        total_payout=total_out,
         pending_pay=pending_pay,
+        fee_percent=fee_percent,
+        usd_rate=usd_rate,
         to_timezone=to_timezone
     )
     
