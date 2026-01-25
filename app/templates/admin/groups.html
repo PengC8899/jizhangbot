@@ -1,110 +1,151 @@
 {% extends "admin/layout.html" %}
 
-{% block title %}群组管理{% endblock %}
+{% block title %}群组广播管理{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4>活跃群组管理</h4>
-    <button class="btn btn-warning text-white" data-bs-toggle="modal" data-bs-target="#broadcastModal">
-        <i class="bi bi-megaphone"></i> 广播消息到所有群
-    </button>
-</div>
-
-<div class="card">
-    <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>群组ID</th>
-                    <th>群组名称</th>
-                    <th>所属Bot</th>
-                    <th>状态</th>
-                    <th>到期时间</th>
-                    <th>费率</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for group in groups %}
-                <tr>
-                    <td>{{ group.group_id }}</td>
-                    <td>{{ group.group_name or "未命名群组" }}</td>
-                    <td>Bot #{{ group.bot_id }}</td>
-                    <td>
-                        {% if group.is_active %}
-                        <span class="badge bg-success">记账中</span>
-                        {% else %}
-                        <span class="badge bg-secondary">停止</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if group.expire_at %}
-                        {{ group.expire_at.strftime('%Y-%m-%d') }}
-                        {% else %}
-                        <span class="text-muted">无授权</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ group.fee_percent }}%</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary" onclick="openMsgModal({{ group.bot_id }}, {{ group.group_id }})">
-                            <i class="bi bi-chat-dots"></i> 发送消息
+<div class="row g-4">
+    <!-- Left Column: Group List -->
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom-0">
+                <h5 class="mb-0 fw-bold"><i class="bi bi-people-fill text-primary me-2"></i>群组列表 <span class="badge bg-secondary rounded-pill ms-2 fs-6">全部 ({{ groups|length }})</span></h5>
+            </div>
+            
+            <div class="card-body p-0 d-flex flex-column">
+                <!-- Toolbar -->
+                <div class="px-3 py-2 border-top border-bottom bg-light d-flex justify-content-between align-items-center">
+                    <div class="form-check ms-2">
+                        <input class="form-check-input" type="checkbox" id="selectAll">
+                        <label class="form-check-label fw-bold text-secondary" for="selectAll">全选</label>
+                    </div>
+                    <div>
+                        <button class="btn btn-outline-primary btn-sm me-2 rounded-pill px-3" onclick="openAddToCategoryModal()">
+                            <i class="bi bi-folder-plus me-1"></i> 添加到分组
                         </button>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6" class="text-center py-4 text-muted">暂无活跃群组</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        <button class="btn btn-outline-danger btn-sm rounded-pill px-3">
+                            <i class="bi bi-box-arrow-right me-1"></i> 退出并移除
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="table-responsive flex-grow-1">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light text-secondary small text-uppercase">
+                            <tr>
+                                <th style="width: 50px;" class="ps-4"></th> <!-- Checkbox column -->
+                                <th>Chat ID</th>
+                                <th>群组名称</th>
+                                <th>激活时间</th>
+                                <!-- Hidden Bot ID for JS -->
+                                <th style="display:none">BotID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups %}
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input group-checkbox" type="checkbox" value="{{ group.group_id }}" data-bot-id="{{ group.bot_id }}">
+                                    </div>
+                                </td>
+                                <td class="text-secondary font-monospace">{{ group.group_id }}</td>
+                                <td class="fw-bold text-dark">{{ group.group_name or "未命名群组" }}</td>
+                                <td class="text-muted small">
+                                    {% if group.active_start_time %}
+                                    {{ group.active_start_time.strftime('%Y-%m-%d %H:%M') }}
+                                    {% else %}
+                                    <span class="badge bg-light text-secondary border">未激活</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center py-5 text-muted">
+                                    <div class="d-flex flex-column align-items-center">
+                                        <i class="bi bi-inbox fs-1 text-secondary opacity-25 mb-3"></i>
+                                        <span>暂无群组数据</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Broadcast Panel -->
+    <div class="col-md-4">
+        <!-- My Groups (Placeholder) -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-bottom-0">
+                <h6 class="mb-0 fw-bold text-primary"><i class="bi bi-tags-fill me-2"></i>我的分组</h6>
+            </div>
+            <div class="card-body pt-0" id="categoryListContainer">
+                 <!-- Loaded dynamically -->
+                 <div class="text-center py-3">
+                     <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                 </div>
+            </div>
+        </div>
+
+        <!-- Broadcast Card -->
+        <div class="card border-0 shadow-sm overflow-hidden">
+            <div class="card-header bg-primary text-white py-3" style="background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);">
+                <h5 class="mb-0"><i class="bi bi-megaphone-fill me-2"></i>消息广播</h5>
+            </div>
+            <div class="card-body bg-white p-4">
+                <div class="alert alert-info border-0 bg-info-subtle text-info-emphasis small mb-4 d-flex align-items-center">
+                    <i class="bi bi-info-circle-fill me-2 fs-5"></i> 
+                    <div id="broadcastTargetInfo">将对左侧勾选的群组发送消息</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold text-dark mb-2">广播内容</label>
+                    <textarea class="form-control bg-light border-0 p-3" id="broadcastText" rows="8" placeholder="在此输入要发送的文案..." style="resize: none;"></textarea>
+                </div>
+
+                <button class="btn btn-primary w-100 py-2 fw-bold rounded-3 shadow-sm" id="broadcastActionBtn" onclick="sendSelectedBroadcast()">
+                    <i class="bi bi-send-fill me-2"></i> 发送广播
+                </button>
+            </div>
+        </div>
     </div>
 </div>
-
-<!-- Send Message Modal -->
-<div class="modal fade" id="msgModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">发送消息到群组</h5>
+                <h5 class="modal-title">新建分组</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <input type="hidden" id="msgBotId">
-                <input type="hidden" id="msgGroupId">
-                
-                <div class="mb-3">
-                    <label class="form-label">消息内容</label>
-                    <textarea class="form-control" id="msgContent" rows="4" placeholder="请输入要发送的内容..."></textarea>
-                    <div class="form-text">机器人将直接发送此文本到目标群组。</div>
-                </div>
+                <input type="text" class="form-control" id="newCategoryName" placeholder="请输入分组名称">
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="sendMsg()">发送</button>
+                <button type="button" class="btn btn-primary" onclick="createCategory()">创建</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Broadcast Modal -->
-<div class="modal fade" id="broadcastModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- Add Groups to Category Modal -->
+<div class="modal fade" id="addToCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">全员广播</h5>
+                <h5 class="modal-title">添加到分组</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">广播内容</label>
-                    <textarea class="form-control" id="broadcastContent" rows="4" placeholder="请输入要广播的内容..."></textarea>
-                    <div class="form-text text-danger">⚠️ 注意：此消息将发送给所有机器人所在的所有活跃群组！</div>
+                <p>将选中的 <span id="selectedCount">0</span> 个群组添加到：</p>
+                <div class="list-group" id="categoryListSelect">
+                    <!-- Loaded dynamically -->
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-warning text-white" onclick="sendBroadcast()">确认广播</button>
             </div>
         </div>
     </div>
@@ -114,46 +155,205 @@
 
 {% block scripts %}
 <script>
-    const msgModal = new bootstrap.Modal(document.getElementById('msgModal'));
-    const broadcastModal = new bootstrap.Modal(document.getElementById('broadcastModal'));
-    
-    function openMsgModal(botId, groupId) {
-        document.getElementById('msgBotId').value = botId;
-        document.getElementById('msgGroupId').value = groupId;
-        document.getElementById('msgContent').value = '';
-        msgModal.show();
-    }
-    
-    async function sendMsg() {
-        const botId = document.getElementById('msgBotId').value;
-        const groupId = document.getElementById('msgGroupId').value;
-        const text = document.getElementById('msgContent').value;
-        
-        if (!text) return alert('内容不能为空');
-        
-        const res = await apiCall(`/admin/bot/${botId}/group/${groupId}/message`, 'POST', { text });
-        
-        if (res.success) {
-            alert('发送成功');
-            msgModal.hide();
-        } else {
-            alert('发送失败: ' + res.error);
+    // --- Initial Load ---
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCategories();
+    });
+
+    let categories = [];
+    let currentCategoryId = null; // null means ALL
+
+    async function loadCategories() {
+        try {
+            const res = await apiCall('/admin/category', 'GET');
+            if (res.success) {
+                categories = res.data;
+                renderCategories();
+            } else {
+                console.error('Failed to load categories:', res.error);
+            }
+        } catch (e) {
+            console.error('Failed to load categories', e);
         }
     }
 
-    async function sendBroadcast() {
-        const text = document.getElementById('broadcastContent').value;
-        if (!text) return alert('广播内容不能为空');
+    function renderCategories() {
+        const container = document.getElementById('categoryListContainer');
+        let html = `
+            <button class="btn ${currentCategoryId === null ? 'btn-primary' : 'btn-outline-primary'} btn-sm rounded-pill me-2 px-3 mb-2" onclick="filterCategory(null)">
+                全部
+            </button>
+        `;
         
-        if (!confirm('确定要向所有群组发送此消息吗？操作不可撤销。')) return;
+        categories.forEach(cat => {
+            const isActive = currentCategoryId === cat.id;
+            html += `
+                <button class="btn ${isActive ? 'btn-primary' : 'btn-outline-secondary'} btn-sm rounded-pill px-3 me-2 mb-2 position-relative" onclick="filterCategory(${cat.id})">
+                    ${cat.name}
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.6rem;">${cat.count}</span>
+                </button>
+            `;
+        });
         
-        const res = await apiCall('/admin/broadcast', 'POST', { text });
+        html += `<button class="btn btn-link btn-sm text-decoration-none ms-auto float-end" onclick="openCreateCategoryModal()">+ 新建</button>`;
+        container.innerHTML = html;
+    }
+
+    function filterCategory(catId) {
+        currentCategoryId = catId;
+        renderCategories();
         
+        // Filter Table Rows
+        // Note: For simplicity in MVP, we might need to reload page or hide rows if we had category data in DOM.
+        // Since we didn't inject category IDs into rows in server-side render yet, filtering is tricky client-side only.
+        // Option 1: Reload page with ?category_id=X (Server-side filtering)
+        // Option 2: Just use checkboxes for "Broadcast to Category" logic.
+        
+        // Let's implement Server-Side filtering via page reload or fetch.
+        // For now, let's just highlight the button to show selection intent for Broadcast.
+        
+        // Wait, the user wants "Broadcast to Category".
+        // If a category is selected, the "Broadcast" button should behave differently?
+        // Or we just use "Add to Group" -> "Broadcast Selected".
+        
+        // Actually, let's enable "Broadcast to Category" directly.
+        if (catId !== null) {
+            const cat = categories.find(c => c.id === catId);
+            document.getElementById('broadcastTargetInfo').innerText = `正在向分组 "${cat.name}" 发送消息`;
+            document.getElementById('broadcastActionBtn').setAttribute('onclick', `sendCategoryBroadcast(${catId})`);
+        } else {
+            document.getElementById('broadcastTargetInfo').innerText = `将对左侧勾选的群组发送消息`;
+            document.getElementById('broadcastActionBtn').setAttribute('onclick', `sendSelectedBroadcast()`);
+        }
+    }
+
+    // --- Category Creation ---
+    function openCreateCategoryModal() {
+        new bootstrap.Modal(document.getElementById('addCategoryModal')).show();
+    }
+
+    async function createCategory() {
+        const name = document.getElementById('newCategoryName').value;
+        if (!name) return alert('请输入名称');
+        
+        const res = await apiCall('/admin/category', 'POST', { name });
         if (res.success) {
-            alert(`广播成功！已发送给 ${res.data.count} 个群组`);
-            broadcastModal.hide();
+            location.reload(); // Refresh to update list
+        } else {
+            alert('创建失败: ' + res.error);
+        }
+    }
+
+    // --- Add Groups to Category ---
+    function openAddToCategoryModal() {
+        const selected = document.querySelectorAll('.group-checkbox:checked');
+        if (selected.length === 0) return alert('请先选择群组');
+        
+        document.getElementById('selectedCount').innerText = selected.length;
+        
+        // Render List
+        let html = '';
+        if (categories.length === 0) {
+            html = '<div class="text-center text-muted py-3">暂无分组，请先新建</div>';
+        } else {
+            html = '<div class="list-group">';
+            categories.forEach(cat => {
+                html += `
+                    <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="addSelectedToCategory(${cat.id})">
+                        ${cat.name}
+                        <span class="badge bg-secondary rounded-pill">${cat.count}</span>
+                    </button>
+                `;
+            });
+            html += '</div>';
+        }
+        document.getElementById('categoryListSelect').innerHTML = html;
+        
+        new bootstrap.Modal(document.getElementById('addToCategoryModal')).show();
+    }
+
+    async function addSelectedToCategory(catId) {
+        const groupIds = []; 
+        
+        document.querySelectorAll('.group-checkbox:checked').forEach(cb => {
+            // Use ChatID for now
+            groupIds.push(parseInt(cb.value)); 
+        });
+
+        const res = await apiCall(`/admin/category/${catId}/add_groups`, 'POST', { group_ids: groupIds });
+        if (res.success) {
+            alert('添加成功');
+            location.reload();
+        } else {
+            alert('添加失败: ' + res.error);
+        }
+    }
+
+    // --- Broadcast ---
+    async function sendCategoryBroadcast(catId) {
+        const text = document.getElementById('broadcastText').value;
+        if (!text) return alert('请输入广播内容');
+        
+        if (!confirm('确定向该分组所有群组发送消息？')) return;
+        
+        const res = await apiCall(`/admin/category/${catId}/broadcast`, 'POST', { text: text });
+        if (res.success) {
+            alert(`广播成功！成功: ${res.data.success_count}, 失败: ${res.data.error_count}`);
+            document.getElementById('broadcastText').value = '';
         } else {
             alert('广播失败: ' + res.error);
+        }
+    }
+
+    // Select All Logic
+    document.getElementById('selectAll').addEventListener('change', function() {
+        const isChecked = this.checked;
+        document.querySelectorAll('.group-checkbox').forEach(cb => {
+            cb.checked = isChecked;
+        });
+    });
+
+    // Send Selected Broadcast Logic (Existing)
+    async function sendSelectedBroadcast() {
+        const text = document.getElementById('broadcastText').value;
+        if (!text) return alert('请输入广播内容');
+
+        const selected = [];
+        document.querySelectorAll('.group-checkbox:checked').forEach(cb => {
+            selected.push({
+                group_id: cb.value,
+                bot_id: parseInt(cb.getAttribute('data-bot-id'))
+            });
+        });
+
+        if (selected.length === 0) return alert('请至少选择一个群组');
+
+        if (!confirm(`确定要向选中的 ${selected.length} 个群组发送消息吗？`)) return;
+
+        // Show loading state
+        const btn = document.getElementById('broadcastActionBtn');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 发送中...';
+
+        try {
+            const res = await apiCall('/admin/broadcast/selected', 'POST', {
+                text: text,
+                targets: selected
+            });
+
+            if (res.success) {
+                alert(`广播完成！\n成功: ${res.data.success_count}\n失败: ${res.data.error_count}`);
+                document.getElementById('broadcastText').value = '';
+                // Optional: Uncheck all
+            } else {
+                alert('广播失败: ' + res.error);
+            }
+        } catch (e) {
+            alert('请求出错: ' + e);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
     }
 </script>

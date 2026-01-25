@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Bot 管理后台 - {{ bot.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .main-container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .card { border: none; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border-radius: 8px; }
+        .navbar { background: #0d6efd !important; height: 64px; }
+        .btn-primary { background-color: #0d6efd; border-color: #0d6efd; }
+        .btn-primary:hover { background-color: #0b5ed7; border-color: #0a58ca; }
+        
+        /* Layout Tweaks */
+        .page-header { background: #0d6efd; color: white; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 64px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .logout-btn { border: 1px solid rgba(255,255,255,0.5); color: white; border-radius: 4px; padding: 4px 12px; text-decoration: none; font-size: 14px; transition: all 0.2s; }
+        .logout-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        
+        .section-title { font-size: 16px; font-weight: 600; color: #333; display: flex; align-items: center; }
+        .badge-count { background: #6c757d; font-weight: normal; font-size: 12px; padding: 4px 8px; border-radius: 12px; color: white; margin-left: auto; }
+        
+        /* Table Styles */
+        .table thead th { border-bottom: 1px solid #dee2e6; color: #6c757d; font-weight: 500; font-size: 13px; padding: 12px 16px; }
+        .table tbody td { padding: 12px 16px; vertical-align: middle; border-bottom: 1px solid #f0f0f0; }
+        .table-hover tbody tr:hover { background-color: #f8f9fa; }
+        
+        /* Checkbox */
+        .form-check-input { width: 18px; height: 18px; border-color: #dee2e6; }
+        .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+        
+        /* Right Panel */
+        .right-panel-card { background: white; border-radius: 8px; margin-bottom: 20px; }
+        .category-header { padding: 15px 20px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .category-title { color: #0d6efd; font-weight: 600; font-size: 15px; display: flex; align-items: center; }
+        .add-new-btn { color: #0d6efd; font-size: 13px; text-decoration: none; cursor: pointer; }
+        
+        .category-list { padding: 10px; }
+        .category-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; cursor: pointer; transition: background 0.2s; color: #495057; font-size: 14px; }
+        .category-item:hover { background-color: #f1f3f5; }
+        .category-item.active { background-color: #0d6efd; color: white; }
+        .category-item.active .badge { background-color: white; color: #0d6efd; }
+        .category-badge { background-color: #e9ecef; color: #495057; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+        
+        .broadcast-header { background: #0d6efd; color: white; padding: 15px 20px; border-radius: 8px 8px 0 0; font-weight: 600; display: flex; align-items: center; }
+        .broadcast-info { background: #e7f5ff; color: #0c5460; padding: 12px 16px; font-size: 13px; border-radius: 4px; margin-bottom: 15px; display: flex; align-items: center; }
+        
+        .btn-action { padding: 6px 16px; font-size: 13px; border-radius: 4px; }
+        .btn-outline-custom { border: 1px solid #dee2e6; color: #495057; background: white; }
+        .btn-outline-custom:hover { background: #f8f9fa; border-color: #ccedff; color: #0d6efd; }
+        
+        .btn-danger-custom { border: 1px solid #fa5252; color: #fa5252; background: white; }
+        .btn-danger-custom:hover { background: #fff5f5; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="page-header">
+        <div class="d-flex align-items-center">
+            <i class="bi bi-robot fs-4 me-2"></i>
+            <span class="fw-bold">Telegram Bot 管理后台</span>
+        </div>
+        <a href="/customer/logout" class="logout-btn">
+            <i class="bi bi-box-arrow-right me-1"></i> 退出登录
+        </a>
+    </div>
+
+    <div class="container main-container">
+        <div class="row g-4">
+            <!-- Left Column: Group List -->
+            <div class="col-lg-8">
+                <div class="card h-100">
+                    <div class="card-header bg-white py-3 border-bottom-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="section-title">
+                                <i class="bi bi-people me-2 text-secondary"></i> 群组列表
+                            </div>
+                            <span class="badge-count" id="totalGroupCount">全部 ({{ groups|length }})</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Toolbar -->
+                    <div class="px-3 py-2 border-top border-bottom bg-white d-flex justify-content-between align-items-center">
+                        <div class="form-check ms-2">
+                            <input class="form-check-input" type="checkbox" id="selectAll">
+                            <label class="form-check-label text-secondary small ms-1" for="selectAll">全选</label>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-custom btn-action text-primary" onclick="openAddToCategoryModal()">
+                                <i class="bi bi-folder-plus me-1"></i> 添加到分组
+                            </button>
+                            <button class="btn btn-danger-custom btn-action" onclick="exitAndRemove()">
+                                <i class="bi bi-trash me-1"></i> 退出并移除
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive flex-grow-1 bg-white">
+                        <table class="table mb-0 align-middle">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th style="width: 50px;" class="ps-4"></th>
+                                    <th>Chat ID</th>
+                                    <th>群组名称</th>
+                                    <th class="text-end pe-4">激活时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="groupTable">
+                                {% for group in groups %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="form-check">
+                                            <input class="form-check-input group-checkbox" type="checkbox" value="{{ group.group_id }}">
+                                        </div>
+                                    </td>
+                                    <td class="text-secondary font-monospace small">{{ group.group_id }}</td>
+                                    <td class="fw-bold text-dark">{{ group.group_name or "未命名群组" }}</td>
+                                    <td class="text-end pe-4 text-muted small">
+                                        {% if group.active_start_time %}
+                                        {{ group.active_start_time.strftime('%Y-%m-%d %H:%M') }}
+                                        {% else %}
+                                        <span class="text-secondary">--</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-5 text-muted">暂无群组数据</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="col-lg-4">
+                <!-- My Categories -->
+                <div class="right-panel-card shadow-sm">
+                    <div class="category-header">
+                        <div class="category-title"><i class="bi bi-tags-fill me-2"></i> 我的分组</div>
+                        <span class="add-new-btn" onclick="openCreateCategoryModal()">+ 新建</span>
+                    </div>
+                    <div class="category-list" id="categoryListContainer">
+                        <div class="category-item active" onclick="filterCategory(null, this)">
+                            <span>全部</span>
+                            <!-- Count loaded dynamically usually, but here static for 'All' -->
+                        </div>
+                        {% for cat in categories %}
+                        <div class="category-item" onclick="filterCategory({{ cat.id }}, this)">
+                            <span>{{ cat.name }}</span>
+                            <span class="category-badge">{{ cat.count }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Broadcast Panel -->
+                <div class="right-panel-card shadow-sm overflow-hidden">
+                    <div class="broadcast-header">
+                        <i class="bi bi-megaphone-fill me-2"></i> 消息广播
+                    </div>
+                    <div class="p-4">
+                        <div class="broadcast-info">
+                            <i class="bi bi-info-circle-fill me-2 fs-6"></i>
+                            <span id="broadcastTargetText">将对左侧勾选的群组发送消息</span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small text-dark">广播内容</label>
+                            <textarea class="form-control border bg-light p-3" id="broadcastText" rows="6" placeholder="在此输入要发送的文案..." style="resize: none; font-size: 14px;"></textarea>
+                        </div>
+
+                        <button class="btn btn-primary w-100 py-2 fw-bold" id="sendBtn" onclick="sendBroadcast()">
+                            <i class="bi bi-send-fill me-2"></i> 发送广播
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Create Category Modal -->
+    <div class="modal fade" id="createCategoryModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-bold">新建分组</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" class="form-control" id="newCategoryName" placeholder="输入分组名称">
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="createCategory()">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add to Category Modal -->
+    <div class="modal fade" id="addToCategoryModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-bold">添加到分组</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-muted small mb-2">选择要添加到的分组：</div>
+                    <div class="list-group" id="modalCategoryList">
+                        <!-- Loaded via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // --- Globals ---
+        let currentCategoryId = null;
+
+        // --- Checkbox Logic ---
+        const selectAll = document.getElementById('selectAll');
+        
+        function updateSelectAllState() {
+            const all = document.querySelectorAll('.group-checkbox');
+            const checked = document.querySelectorAll('.group-checkbox:checked');
+            if (all.length > 0 && all.length === checked.length) {
+                selectAll.checked = true;
+                selectAll.indeterminate = false;
+            } else if (checked.length > 0) {
+                selectAll.checked = false;
+                selectAll.indeterminate = true;
+            } else {
+                selectAll.checked = false;
+                selectAll.indeterminate = false;
+            }
+            
+            // Update Broadcast Info Text
+            const targetText = document.getElementById('broadcastTargetText');
+            if (currentCategoryId !== null) {
+                targetText.innerText = `正在对当前分组下的群组发送消息`;
+            } else {
+                targetText.innerText = checked.length > 0 ? `将对选中的 ${checked.length} 个群组发送消息` : '请先在左侧勾选群组';
+            }
+        }
+
+        selectAll.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.group-checkbox');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            updateSelectAllState();
+        });
+
+        // Delegate event for dynamic rows
+        document.getElementById('groupTable').addEventListener('change', function(e) {
+            if (e.target.classList.contains('group-checkbox')) {
+                updateSelectAllState();
+            }
+        });
+
+        // --- Category Logic ---
+        async function filterCategory(catId, el) {
+            currentCategoryId = catId;
+            
+            // Update UI Active State
+            document.querySelectorAll('.category-item').forEach(item => item.classList.remove('active'));
+            el.classList.add('active');
+            
+            // Reset checkboxes
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+
+            // Fetch Data
+            let url = '/customer/api/groups';
+            if (catId) url += `?category_id=${catId}`;
+            
+            try {
+                const response = await fetch(url);
+                const groups = await response.json();
+                renderGroups(groups);
+            } catch (e) {
+                console.error(e);
+                alert('加载失败');
+            }
+        }
+
+        function renderGroups(groups) {
+            const tbody = document.getElementById('groupTable');
+            const countBadge = document.getElementById('totalGroupCount');
+            
+            countBadge.innerText = currentCategoryId ? `分组 (${groups.length})` : `全部 (${groups.length})`;
+            
+            if (groups.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5 text-muted">暂无群组数据</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            groups.forEach(g => {
+                const timeStr = g.active_start_time || '--';
+                html += `
+                    <tr>
+                        <td class="ps-4">
+                            <div class="form-check">
+                                <input class="form-check-input group-checkbox" type="checkbox" value="${g.group_id}">
+                            </div>
+                        </td>
+                        <td class="text-secondary font-monospace small">${g.group_id}</td>
+                        <td class="fw-bold text-dark">${g.group_name}</td>
+                        <td class="text-end pe-4 text-muted small">${timeStr}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+            updateSelectAllState();
+        }
+
+        // --- Create Category ---
+        const createModal = new bootstrap.Modal(document.getElementById('createCategoryModal'));
+        
+        function openCreateCategoryModal() {
+            document.getElementById('newCategoryName').value = '';
+            createModal.show();
+        }
+
+        async function createCategory() {
+            const name = document.getElementById('newCategoryName').value.trim();
+            if (!name) return alert('请输入名称');
+            
+            try {
+                const res = await fetch('/customer/api/category', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    location.reload(); // Simple reload to refresh list
+                } else {
+                    alert('创建失败: ' + data.error);
+                }
+            } catch (e) {
+                alert('错误: ' + e);
+            }
+        }
+
+        // --- Add to Category ---
+        const addToModal = new bootstrap.Modal(document.getElementById('addToCategoryModal'));
+
+        function openAddToCategoryModal() {
+            const selected = document.querySelectorAll('.group-checkbox:checked');
+            if (selected.length === 0) return alert('请先选择群组');
+            
+            // Load categories into modal list
+            const listContainer = document.getElementById('modalCategoryList');
+            // We can parse the categories from the DOM or fetch again.
+            // Let's use the ones rendered in right panel for simplicity, excluding 'All'
+            const catItems = document.querySelectorAll('.category-list .category-item');
+            let html = '';
+            let found = false;
+            
+            // Note: This is a bit hacky relying on DOM. Better to have categories array in JS.
+            // Let's rely on server injection.
+            // We will fetch categories via API or inject via template.
+            // For now, let's just fetch them quickly or reload page if needed.
+            // Actually, we can just iterate the categories passed from server in JS variable.
+            // Let's inject them in script tag.
+            
+            if (serverCategories.length === 0) {
+                html = '<div class="text-center p-3 text-muted">暂无分组，请先新建</div>';
+            } else {
+                serverCategories.forEach(cat => {
+                    html += `
+                        <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="submitAddToCategory(${cat.id})">
+                            ${cat.name}
+                            <i class="bi bi-plus-lg text-secondary"></i>
+                        </button>
+                    `;
+                });
+                found = true;
+            }
+            
+            listContainer.innerHTML = html;
+            addToModal.show();
+        }
+
+        async function submitAddToCategory(catId) {
+            const selected = [];
+            document.querySelectorAll('.group-checkbox:checked').forEach(cb => selected.push(cb.value));
+            
+            try {
+                const res = await fetch(`/customer/api/category/${catId}/add`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({group_ids: selected})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('添加成功');
+                    location.reload();
+                } else {
+                    alert('失败: ' + data.error);
+                }
+            } catch (e) {
+                alert('错误: ' + e);
+            }
+        }
+
+        // --- Exit & Remove ---
+        async function exitAndRemove() {
+            const selected = [];
+            document.querySelectorAll('.group-checkbox:checked').forEach(cb => selected.push(cb.value));
+            
+            if (selected.length === 0) return alert('请先选择要退出的群组');
+            
+            if (!confirm(`⚠️ 危险操作！\n\n确定要让 Bot 退出选中的 ${selected.length} 个群组并删除相关配置吗？\n\n此操作不可恢复！`)) return;
+            
+            try {
+                const res = await fetch('/customer/api/groups/exit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({group_ids: selected})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`操作成功: 已移除 ${data.data.removed} 个群组`);
+                    location.reload();
+                } else {
+                    alert('操作失败: ' + data.error);
+                }
+            } catch (e) {
+                alert('网络错误: ' + e);
+            }
+        }
+
+        // --- Broadcast ---
+        async function sendBroadcast() {
+            const text = document.getElementById('broadcastText').value;
+            if (!text) return alert('请输入广播内容');
+
+            let payload = { text: text };
+            
+            // Logic: If category is selected, broadcast to category? 
+            // Or only broadcast to CHECKED items?
+            // UI says "对左侧勾选的群组".
+            // So we strictly follow checkboxes.
+            
+            const selected = [];
+            document.querySelectorAll('.group-checkbox:checked').forEach(cb => selected.push(cb.value));
+            
+            if (selected.length === 0) return alert('请至少选择一个群组');
+            payload.group_ids = selected;
+
+            if (!confirm(`确定发送给 ${selected.length} 个群组？`)) return;
+
+            const btn = document.getElementById('sendBtn');
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 发送中...';
+
+            try {
+                const res = await fetch('/customer/api/broadcast', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`发送成功: ${data.data.success_count}, 失败: ${data.data.error_count}`);
+                    document.getElementById('broadcastText').value = '';
+                } else {
+                    alert('发送失败: ' + data.error);
+                }
+            } catch (e) {
+                alert('网络错误: ' + e);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        }
+        
+        // Inject Categories from Server
+        const serverCategories = [
+            {% for cat in categories %}
+            { id: {{ cat.id }}, name: "{{ cat.name }}" },
+            {% endfor %}
+        ];
+    </script>
+</body>
+</html>

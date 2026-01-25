@@ -17,6 +17,9 @@ class Bot(Base):
     # Structure: {"bill_text": "...", "biz_text": "...", "biz_url": "...", ...}
     button_config = Column(String, default="{}")
     
+    # Web Management Password (Plain text for MVP, or hashed)
+    web_password = Column(String, nullable=True)
+
     # Relationships
     fee_template = relationship("BotFeeTemplate", back_populates="bot", uselist=False)
     exchange_template = relationship("BotExchangeTemplate", back_populates="bot", uselist=False)

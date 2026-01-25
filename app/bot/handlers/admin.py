@@ -287,6 +287,36 @@ async def permission_help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     """
     await update.message.reply_text("请购买后再使用此功能！(目前仅限群主/管理员可操作)")
 
+async def set_web_password_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    User: 设置密码 <password>
+    Sets the password for the Web Management Interface.
+    """
+    bot_id = context.bot_data.get("db_id")
+    args = context.args
+    
+    if not args:
+        await update.message.reply_text("⚠️ 请输入密码，例如: /set_password 123456")
+        return
+        
+    password = args[0]
+    if len(password) < 6:
+        await update.message.reply_text("⚠️ 密码长度至少为 6 位")
+        return
+        
+    service, session = await get_service()
+    try:
+        from app.models.bot import Bot
+        bot = await session.get(Bot, bot_id)
+        if bot:
+            bot.web_password = password
+            await session.commit()
+            await update.message.reply_text(f"✅ 管理后台密码已设置为: {password}\n请在群发管理页面使用 Bot ID ({bot_id}) 和此密码登录。")
+        else:
+            await update.message.reply_text("❌ 机器人数据不存在")
+    finally:
+        await session.close()
+
 async def operator_help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     User: 如何设置群内操作人

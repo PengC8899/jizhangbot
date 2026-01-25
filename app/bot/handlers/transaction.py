@@ -18,9 +18,30 @@ async def get_main_menu_keyboard():
         ["试用", "开始"],
         ["到期时间", "详细说明书"],
         ["自助续费", "如何设置权限人"],
-        ["如何设置群内操作人", "开启/关闭计算功能"]
+        ["如何设置群内操作人", "开启/关闭计算功能"],
+        ["群发管理"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+async def group_broadcast_menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    User types "群发管理"
+    """
+    bot_id = context.bot_data.get("db_id")
+    url = f"http://{settings.DOMAIN}/customer/login?bot_id={bot_id}"
+    
+    kb = [
+        [InlineKeyboardButton("🔗 进入群发管理后台", url=url)]
+    ]
+    
+    await update.message.reply_text(
+        "📢 <b>群发管理后台</b>\n\n"
+        "点击下方按钮进入独立的群发管理系统。\n"
+        f"登录账号 (Bot ID): <code>{bot_id}</code>\n"
+        "登录密码: (请使用 /set_password 设置)",
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode='HTML'
+    )
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """

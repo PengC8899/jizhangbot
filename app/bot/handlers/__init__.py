@@ -7,17 +7,21 @@ from .system import (
     check_license_middleware, activate_cmd, trial_cmd, license_info_cmd, broadcast_cmd
 )
 from .transaction import (
-    start_cmd, stop_cmd, handle_transaction, show_bill_cmd, clear_data_cmd
+    start_cmd, stop_cmd, handle_transaction, show_bill_cmd, clear_data_cmd, group_broadcast_menu_cmd
 )
 from .admin import (
     set_rate_cmd, set_currency_rate, set_operator_cmd, show_operator_cmd, delete_operator_cmd,
     mode_setting_cmd, renewal_menu_cmd, renewal_callback, help_manual_cmd,
-    permission_help_cmd, operator_help_cmd, calc_toggle_cmd, usdt_price_cmd, new_member_welcome
+    permission_help_cmd, operator_help_cmd, calc_toggle_cmd, usdt_price_cmd, new_member_welcome,
+    set_web_password_cmd
 )
 
 def setup_handlers(application: Application):
     # Activate Command
     application.add_handler(CommandHandler("activate", activate_cmd))
+    
+    # Set Password Command
+    application.add_handler(CommandHandler("set_password", set_web_password_cmd))
     
     # Broadcast Command
     application.add_handler(CommandHandler("broadcast", broadcast_cmd))
@@ -86,6 +90,7 @@ def setup_handlers(application: Application):
     application.add_handler(MessageHandler(filters.Regex(r"^如何设置权限人$"), permission_help_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^如何设置群内操作人$"), operator_help_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^开启/关闭计算功能$"), calc_toggle_cmd))
+    application.add_handler(MessageHandler(filters.Regex(r"^群发管理$"), group_broadcast_menu_cmd))
     
     # Callback
     application.add_handler(CallbackQueryHandler(renewal_callback, pattern=r"^renew_"))

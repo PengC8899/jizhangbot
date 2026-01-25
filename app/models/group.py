@@ -1,7 +1,26 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, BigInteger, Numeric
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, BigInteger, Numeric, Table
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from sqlalchemy.sql import func
+
+# Association Table for Many-to-Many
+group_category_association = Table(
+    'group_category_association',
+    Base.metadata,
+    Column('group_config_id', Integer, ForeignKey('group_configs.id'), primary_key=True),
+    Column('category_id', Integer, ForeignKey('group_categories.id'), primary_key=True)
+)
+
+class GroupCategory(Base):
+    __tablename__ = "group_categories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(Integer, ForeignKey("bots.id"), nullable=True) # Optional for backward compatibility, but recommended
+    name = Column(String, index=True) # Removed unique=True to allow same name for different bots
+    created_at = Column(DateTime, default=func.now())
+    
+    # Relationship
+    groups = relationship("GroupConfig", secondary=group_category_association, back_populates="categories")
 
 class GroupConfig(Base):
     __tablename__ = "group_configs"
@@ -10,6 +29,9 @@ class GroupConfig(Base):
     bot_id = Column(Integer, ForeignKey("bots.id"))
     group_id = Column(BigInteger, index=True) # Telegram Chat ID
     group_name = Column(String, nullable=True)
+    
+    # Categories
+    categories = relationship("GroupCategory", secondary=group_category_association, back_populates="groups")
     
     # Status
     is_active = Column(Boolean, default=False) # "开始" command toggles this

@@ -7,9 +7,10 @@ from app.core.bot_manager import bot_manager
 from app.models.bot import Bot
 from app.models.group import GroupConfig, Operator, LedgerRecord, LicenseCode
 from app.models.audit import AuditLog
+from app.core.scheduler import start_scheduler, scheduler
 from sqlalchemy import select
 from loguru import logger
-from app.api import admin, webhook, dashboard
+from app.api import admin, webhook, dashboard, customer
 from app.api.bill import router as bill_router
 
 # Initialize Sentry
@@ -24,6 +25,10 @@ if settings.SENTRY_DSN:
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up...")
+    
+    # Start Scheduler
+    start_scheduler()
+    logger.info("Scheduler started.")
     
     # Create DB Tables (for demo purposes)
     async with engine.begin() as conn:
@@ -45,6 +50,10 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down...")
+    
+    # Stop Scheduler
+    scheduler.shutdown()
+    
     # Stop all bots
     for bot_id in list(bot_manager.apps.keys()):
         await bot_manager.stop_bot(bot_id)
@@ -52,6 +61,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(customer.router, prefix="/customer", tags=["Customer"])
 app.include_router(webhook.router, prefix="/telegram", tags=["Webhook"])
 app.include_router(bill_router, tags=["bill"])
 app.include_router(dashboard.router, tags=["dashboard"])

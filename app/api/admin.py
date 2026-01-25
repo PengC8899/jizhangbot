@@ -194,6 +194,134 @@ async def broadcast_message(msg: GroupMessage, db: AsyncSession = Depends(get_db
             
     return {"status": "success", "count": count, "errors": errors}
 
+class BroadcastTarget(BaseModel):
+    bot_id: int
+    group_id: int
+
+class BroadcastSelectedRequest(BaseModel):
+    text: str
+    targets: list[BroadcastTarget]
+
+@router.post("/broadcast/selected")
+async def broadcast_selected(req: BroadcastSelectedRequest, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    success_count = 0
+    error_count = 0
+    
+    for target in req.targets:
+        app = bot_manager.apps.get(target.bot_id)
+        if not app:
+            logger.warning(f"Bot {target.bot_id} not found for group {target.group_id}")
+            error_count += 1
+            continue
+            
+        try:
+            await app.bot.send_message(chat_id=target.group_id, text=req.text)
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send to group {target.group_id}: {e}")
+            error_count += 1
+            
+    return {"status": "success", "success_count": success_count, "error_count": error_count}
+
+# --- Category Management ---
+from app.models.group import GroupCategory
+
+class CategoryCreate(BaseModel):
+    name: str
+
+@router.post("/category")
+async def create_category(cat: CategoryCreate, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    # Check duplicate
+    exists = await db.scalar(select(GroupCategory).where(GroupCategory.name == cat.name))
+    if exists:
+        raise HTTPException(status_code=400, detail="分类名称已存在")
+        
+    new_cat = GroupCategory(name=cat.name)
+    db.add(new_cat)
+    await db.commit()
+    return {"status": "success", "id": new_cat.id, "name": new_cat.name}
+
+@router.get("/category")
+async def list_categories(db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    # Fetch categories with group count
+    # This requires a bit complex query or separate counting.
+    # Simple list first.
+    stmt = select(GroupCategory)
+    result = await db.execute(stmt)
+    cats = result.scalars().all()
+    
+    # Manually count for now or optimize later
+    # Loading relationship eagerly might be better
+    from sqlalchemy.orm import selectinload
+    stmt = select(GroupCategory).options(selectinload(GroupCategory.groups))
+    result = await db.execute(stmt)
+    cats = result.scalars().all()
+    
+    data = []
+    for c in cats:
+        data.append({
+            "id": c.id,
+            "name": c.name,
+            "count": len(c.groups)
+        })
+    return data
+
+class AddGroupsToCategory(BaseModel):
+    group_ids: list[int] # ID of GroupConfig, NOT group_id (chat_id)
+
+@router.post("/category/{cat_id}/add_groups")
+async def add_groups_to_category(cat_id: int, req: AddGroupsToCategory, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    # Load category with groups to check existence
+    from sqlalchemy.orm import selectinload
+    stmt = select(GroupCategory).options(selectinload(GroupCategory.groups)).where(GroupCategory.id == cat_id)
+    result = await db.execute(stmt)
+    cat = result.scalars().first()
+
+    if not cat:
+        raise HTTPException(status_code=404, detail="分类不存在")
+        
+    # Get Groups
+    stmt = select(GroupConfig).where(GroupConfig.group_id.in_(req.group_ids))
+    result = await db.execute(stmt)
+    groups = result.scalars().all()
+    
+    count = 0
+    for g in groups:
+        if g not in cat.groups:
+            cat.groups.append(g)
+            count += 1
+            
+    await db.commit()
+    return {"status": "success", "added": count}
+
+@router.post("/category/{cat_id}/broadcast")
+async def broadcast_category(cat_id: int, msg: GroupMessage, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    cat = await db.get(GroupCategory, cat_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="分类不存在")
+        
+    # Load groups
+    await db.refresh(cat, ['groups'])
+    
+    success_count = 0
+    error_count = 0
+    
+    for group in cat.groups:
+        app = bot_manager.apps.get(group.bot_id)
+        if not app:
+            error_count += 1
+            continue
+            
+        try:
+            await app.bot.send_message(chat_id=group.group_id, text=msg.text)
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Failed to broadcast to {group.group_id}: {e}")
+            error_count += 1
+            
+    return {"status": "success", "success_count": success_count, "error_count": error_count}
+
+
 class BotCreate(BaseModel):
     token: str
     name: str = None
