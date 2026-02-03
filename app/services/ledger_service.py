@@ -67,7 +67,7 @@ class LedgerService:
     async def start_recording(self, group_id: int, bot_id: int):
         stmt = update(GroupConfig).where(
             and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)
-        ).values(is_active=True, active_start_time=get_now())
+        ).values(is_active=True, active_start_time=get_now().replace(tzinfo=None))
         await self.session.execute(stmt)
         await self.session.commit()
         await cache_service.invalidate_group_config(group_id, bot_id)
@@ -155,7 +155,8 @@ class LedgerService:
             operator_name=operator_name,
             original_text=original_text,
             fee_applied=fee_applied,
-            usd_rate_snapshot=config.usd_rate
+            usd_rate_snapshot=config.usd_rate,
+            created_at=get_now().replace(tzinfo=None)
         )
         self.session.add(record)
         await self.session.commit()

@@ -52,8 +52,13 @@ function restart_vps {
 }
 
 function ssh_vps {
-    echo "Connecting to VPS..."
-    ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP"
+    if [ -n "$1" ]; then
+        echo "Executing command on VPS: $1"
+        ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" "$1"
+    else
+        echo "Connecting to VPS..."
+        ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP"
+    fi
 }
 
 function logs_vps {
@@ -86,7 +91,8 @@ elif [ "$1" == "deploy" ]; then
 elif [ "$1" == "restart_vps" ]; then
     restart_vps
 elif [ "$1" == "ssh" ]; then
-    ssh_vps
+    shift # Shift to get the next argument
+    ssh_vps "$*"
 elif [ "$1" == "logs" ]; then
     logs_vps
 elif [ "$1" == "migrate" ]; then

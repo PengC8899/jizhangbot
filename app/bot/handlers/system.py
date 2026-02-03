@@ -22,10 +22,10 @@ async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT
     # Allow /activate command always
     if update.message and update.message.text:
         text = update.message.text
-        if text.startswith("/activate"):
+        if text.startswith("/activate") or text.startswith("/激活") or text == "激活":
             return True
-        # Allow start commands to pass through
-        if text.startswith("/start") or text == "开始" or text == "试用":
+        # Allow '试用' to pass through so they can claim trial
+        if text == "试用":
             return True
         
     session = AsyncSessionLocal()
@@ -45,7 +45,10 @@ async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT
                     msg_text.startswith("入款") or 
                     msg_text.startswith("下发") or 
                     msg_text == "显示账单" or
-                    msg_text == "清理今天数据"):
+                    msg_text == "清理今天数据" or
+                    msg_text.startswith("/start") or
+                    msg_text == "/开始" or
+                    msg_text == "开始"):
                     
                     try:
                         await update.message.reply_text(
