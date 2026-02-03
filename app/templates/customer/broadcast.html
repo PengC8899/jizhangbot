@@ -174,6 +174,11 @@
                             <textarea class="form-control border bg-light p-3" id="broadcastText" rows="6" placeholder="在此输入要发送的文案..." style="resize: none; font-size: 14px;"></textarea>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small text-dark">附带图片 (可选)</label>
+                            <input class="form-control" type="file" id="broadcastImage" accept="image/*">
+                        </div>
+
                         <button class="btn btn-primary w-100 py-2 fw-bold" id="sendBtn" onclick="sendBroadcast()">
                             <i class="bi bi-send-fill me-2"></i> 发送广播
                         </button>
@@ -445,20 +450,22 @@
             const text = document.getElementById('broadcastText').value;
             if (!text) return alert('请输入广播内容');
 
-            let payload = { text: text };
-            
-            // Logic: If category is selected, broadcast to category? 
-            // Or only broadcast to CHECKED items?
-            // UI says "对左侧勾选的群组".
-            // So we strictly follow checkboxes.
-            
             const selected = [];
             document.querySelectorAll('.group-checkbox:checked').forEach(cb => selected.push(cb.value));
             
             if (selected.length === 0) return alert('请至少选择一个群组');
-            payload.group_ids = selected;
 
             if (!confirm(`确定发送给 ${selected.length} 个群组？`)) return;
+
+            // Use FormData for file upload
+            const formData = new FormData();
+            formData.append('text', text);
+            formData.append('group_ids', JSON.stringify(selected));
+            
+            const imageInput = document.getElementById('broadcastImage');
+            if (imageInput.files.length > 0) {
+                formData.append('image', imageInput.files[0]);
+            }
 
             const btn = document.getElementById('sendBtn');
             const originalHtml = btn.innerHTML;
@@ -468,13 +475,14 @@
             try {
                 const res = await fetch('/customer/api/broadcast', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
+                    // headers: {'Content-Type': 'multipart/form-data'}, // Browser sets this automatically with boundary
+                    body: formData
                 });
                 const data = await res.json();
                 if (data.success) {
                     alert(`发送成功: ${data.data.success_count}, 失败: ${data.data.error_count}`);
                     document.getElementById('broadcastText').value = '';
+                    document.getElementById('broadcastImage').value = ''; // Reset file input
                 } else {
                     alert('发送失败: ' + data.error);
                 }

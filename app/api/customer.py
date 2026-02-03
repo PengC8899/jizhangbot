@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -210,12 +210,24 @@ async def exit_groups(req: ExitGroupsRequest, db: AsyncSession = Depends(get_db)
     return {"success": True, "data": {"removed": count}}
 
 @router.post("/api/broadcast")
-async def customer_broadcast_api(req: CustomerBroadcastRequest, db: AsyncSession = Depends(get_db), bot: Bot = Depends(get_current_customer_bot)):
+async def customer_broadcast_api(
+    text: str = Form(...),
+    group_ids: str = Form(...),
+    image: UploadFile = File(None),
+    db: AsyncSession = Depends(get_db),
+    bot: Bot = Depends(get_current_customer_bot)
+):
+    # Parse group_ids
+    try:
+        target_group_ids = json.loads(group_ids)
+    except Exception:
+        return {"success": False, "error": "Invalid group_ids format"}
+
     # Verify groups belong to this bot
     # (Security check)
     stmt = select(GroupConfig).where(
         GroupConfig.bot_id == bot.id,
-        GroupConfig.group_id.in_(req.group_ids)
+        GroupConfig.group_id.in_(target_group_ids)
     )
     result = await db.execute(stmt)
     valid_groups = result.scalars().all()
@@ -230,9 +242,17 @@ async def customer_broadcast_api(req: CustomerBroadcastRequest, db: AsyncSession
     success_count = 0
     error_count = 0
     
+    # Read image once if present
+    image_bytes = None
+    if image:
+        image_bytes = await image.read()
+
     for group in valid_groups:
         try:
-            await app.bot.send_message(chat_id=group.group_id, text=req.text)
+            if image_bytes:
+                await app.bot.send_photo(chat_id=group.group_id, photo=image_bytes, caption=text)
+            else:
+                await app.bot.send_message(chat_id=group.group_id, text=text)
             success_count += 1
         except Exception as e:
             error_count += 1
