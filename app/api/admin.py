@@ -104,15 +104,27 @@ async def bots_ui(request: Request, db: AsyncSession = Depends(get_db), admin=De
     result = await db.execute(select(Bot))
     bots = result.scalars().all()
     
-    # Parse button config for UI
+    now = get_now()
+    
+    # Parse button config for UI & Load Authorized Accounts
     for bot in bots:
         if bot.button_config:
             try:
-                bot.button_config = json.loads(bot.button_config)
+                # Store in a temporary attribute to avoid triggering SQLAlchemy autoflush on the 'button_config' column
+                bot.parsed_config = json.loads(bot.button_config)
             except:
-                bot.button_config = {}
+                bot.parsed_config = {}
         else:
-            bot.button_config = {}
+            bot.parsed_config = {}
+            
+        # Fetch Authorized Accounts (Active License)
+        stmt = select(GroupConfig).where(
+            GroupConfig.bot_id == bot.id,
+            GroupConfig.expire_at > now
+        ).order_by(GroupConfig.expire_at.desc())
+        
+        res = await db.execute(stmt)
+        bot.authorized_accounts = res.scalars().all()
             
     return templates.TemplateResponse("admin/bots.html", {"request": request, "bots": bots, "page": "bots"})
 
@@ -222,6 +234,25 @@ async def broadcast_selected(req: BroadcastSelectedRequest, db: AsyncSession = D
             error_count += 1
             
     return {"status": "success", "success_count": success_count, "error_count": error_count}
+
+@router.delete("/group_config/{config_id}/license")
+async def revoke_license(config_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    config = await db.get(GroupConfig, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+    
+    # Revoke license: set expire_at to None
+    config.expire_at = None
+    # We keep the config itself as it might have other settings (rates, etc.)
+    # But it will disappear from "Authorized Accounts" list
+    
+    await db.commit()
+    
+    # Invalidate cache if exists
+    from app.core.cache import cache_service
+    await cache_service.invalidate_group_config(config.group_id, config.bot_id)
+    
+    return {"status": "success"}
 
 # --- Category Management ---
 from app.models.group import GroupCategory

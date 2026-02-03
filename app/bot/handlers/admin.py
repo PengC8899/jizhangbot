@@ -5,6 +5,9 @@ from app.services.ledger_service import LedgerService
 from app.services.price_service import price_service
 from app.services.audit_service import AuditService
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def get_service():
     session = AsyncSessionLocal()
@@ -235,22 +238,16 @@ async def renewal_menu_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     User: 自助续费
     """
-    kb = [
-        [InlineKeyboardButton("15天", callback_data="renew_15"), InlineKeyboardButton("1个月(9折)", callback_data="renew_30")],
-        [InlineKeyboardButton("3个月(8折)", callback_data="renew_90")]
-    ]
-    await update.message.reply_text("自助续费暂只支持USDT的trc通道", reply_markup=InlineKeyboardMarkup(kb))
+    msg = """<code>TA2A9WZVtu6SXdRQU3HovdBx2WCRNKyn9C</code>
+
+付款后联系管理 @Pcccc6"""
+    await update.message.reply_text(msg, parse_mode='HTML')
 
 async def renewal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Deprecated callback but kept to avoid errors if old buttons exist
     query = update.callback_query
     await query.answer()
-    
-    data = query.data
-    days_map = {"renew_15": 15, "renew_30": 30, "renew_90": 90}
-    days = days_map.get(data, 0)
-    
-    # In real world, generate payment address here
-    await query.edit_message_text(f"暂未接入支付网关。\n请联系管理员手动续费 {days} 天。")
+    await query.edit_message_text("请联系管理 @Pcccc6")
 
 async def help_manual_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -259,9 +256,10 @@ async def help_manual_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = """
 <b>📝 HYPay 机器人使用说明书</b>
 
-<b>1. 基础指令</b>
-- <code>开始</code> : 每天记账前必须发送
-- <code>+100</code> : 记一笔入款
+<b>1. 基础指令 (支持中文命令)</b>
+- <code>/开始</code> (或 <code>/start</code>) : 每天记账前必须发送
+- <code>/结束</code> (或 <code>/stop</code>) : 停止记账
+- <code>+100</code> : 记一笔入款 (或 <code>入款100</code>)
 - <code>下发100</code> : 记一笔下发
 - <code>下发100u</code> : 记一笔 U 下发 (需设置汇率)
 - <code>显示账单</code> : 查看最近 5 笔
@@ -273,7 +271,11 @@ async def help_manual_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - <code>删除操作人 @xxx</code> : 删除操作员
 - <code>清理今天数据</code> : 重置今日账单 (慎用)
 
-<b>3. 工具指令</b>
+<b>3. 管理指令</b>
+- <code>/激活 code</code> : 激活机器人
+- <code>/群发</code> : 广播消息 (或 <code>群发管理</code> 按钮)
+
+<b>4. 工具指令</b>
 - <code>k100</code> : 计算 100 元卡价换 U
 - <code>lz</code> / <code>lw</code> : 查支付宝/微信价格
 
@@ -285,7 +287,7 @@ async def permission_help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     """
     User: 如何设置权限人
     """
-    await update.message.reply_text("请购买后再使用此功能！(目前仅限群主/管理员可操作)")
+    await update.message.reply_text("联系管理 @Pcccc6")
 
 async def set_web_password_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -295,8 +297,21 @@ async def set_web_password_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     bot_id = context.bot_data.get("db_id")
     args = context.args
     
+    # Permission Check: Only group creator/administrator can set password
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        if member.status not in ['creator', 'administrator']:
+            await update.message.reply_text("⚠️ 只有群管理员可以设置密码")
+            return
+    except Exception as e:
+        logger.error(f"Failed to check admin status: {e}")
+        await update.message.reply_text("⚠️ 无法验证权限，请联系客服")
+        return
+
     if not args:
-        await update.message.reply_text("⚠️ 请输入密码，例如: /set_password 123456")
+        await update.message.reply_text("⚠️ 请输入密码，例如: /设置密码 123456")
         return
         
     password = args[0]

@@ -208,7 +208,17 @@ class LedgerService:
                 
         return summary
 
-    async def get_recent_records(self, group_id: int, bot_id: int, limit: int = 5, record_type: str = None):
+    async def get_recent_records(self, group_id: int, bot_id: int, limit: int = 5, record_type: str = None, daily_only: bool = True):
+        # 4AM Logic for daily filtering
+        if daily_only:
+            now = get_now()
+            if now.hour < 4:
+                start_date = now.date() - timedelta(days=1)
+            else:
+                start_date = now.date()
+            start_time = datetime.combine(start_date, time(4, 0))
+            if now.tzinfo: start_time = now.tzinfo.localize(start_time)
+        
         stmt = select(LedgerRecord).where(
             and_(
                 LedgerRecord.group_id == group_id,
@@ -217,6 +227,9 @@ class LedgerService:
         )
         if record_type:
             stmt = stmt.where(LedgerRecord.type == record_type)
+            
+        if daily_only:
+            stmt = stmt.where(LedgerRecord.created_at >= start_time)
             
         stmt = stmt.order_by(LedgerRecord.created_at.desc()).limit(limit)
         

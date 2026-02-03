@@ -17,14 +17,10 @@ from .admin import (
 )
 
 def setup_handlers(application: Application):
-    # Activate Command
-    application.add_handler(CommandHandler("activate", activate_cmd))
-    
-    # Set Password Command
-    application.add_handler(CommandHandler("set_password", set_web_password_cmd))
-    
-    # Broadcast Command
-    application.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    # System Commands (Dual support for English/Chinese)
+    application.add_handler(CommandHandler(["activate", "激活"], activate_cmd))
+    application.add_handler(CommandHandler(["set_password", "设置密码"], set_web_password_cmd))
+    application.add_handler(CommandHandler(["broadcast", "群发", "广播"], broadcast_cmd))
     
     # Middleware Enforcer (High Priority)
     async def license_enforcer(update: Update, context):
@@ -35,8 +31,11 @@ def setup_handlers(application: Application):
             
     application.add_handler(TypeHandler(Update, license_enforcer), group=-1)
 
-    # Regex handlers
-    application.add_handler(CommandHandler("start", start_cmd))
+    # Start/Stop Commands
+    application.add_handler(CommandHandler(["start", "开始"], start_cmd))
+    application.add_handler(CommandHandler(["stop", "结束", "结束记录"], stop_cmd))
+    
+    # Text Triggers (Regex) - Keep for backward compatibility and keyboard buttons
     application.add_handler(MessageHandler(filters.Regex(r"^开始$"), start_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^结束记录$"), stop_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"(设置|更改)费率"), set_rate_cmd))
