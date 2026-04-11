@@ -4,6 +4,7 @@ from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
 from app.services.price_service import price_service
 from app.services.audit_service import AuditService
+from decimal import Decimal
 import re
 import logging
 
@@ -18,7 +19,7 @@ async def set_rate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Match: 设置费率X.X% or 更改费率X.X%
     """
     text = update.message.text
-    match = re.search(r"(设置|更改)费率\s*([\d\.]+)%", text)
+    match = re.search(r"(设置|更改)费率\s*([\d\.]+)(%?)", text)
     if match:
         rate = float(match.group(2))
         bot_id = context.bot_data.get("db_id")
@@ -53,7 +54,7 @@ async def set_currency_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     # Generic regex for currency rates
     patterns = {
-        "usd": r"设置美元汇率\s*([\d\.]+)",
+        "usd": r"设置(?:美元)?汇率\s*([\d\.]+)",
         "php": r"设置比索汇率\s*([\d\.]+)",
         "myr": r"设置马币汇率\s*([\d\.]+)",
         "thb": r"设置泰铢汇率\s*([\d\.]+)"
