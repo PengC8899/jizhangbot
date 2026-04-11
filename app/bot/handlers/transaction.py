@@ -196,32 +196,48 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         recent_deposits = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="deposit")
         for r in recent_deposits:
             time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
-            val_str = f"<b>{fmt(r.amount)}</b>"
+            # Format number with commas
+            val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
+            val_str = f"<b>{val_fmt}</b>"
+            
             if config.usd_rate > 0:
-                usdt_val = r.amount / config.usd_rate
-                val_str += f" / {config.usd_rate}={usdt_val:.2f}"
-            reply += f"  {time_str}  {val_str}\n"
+                usdt_val = r.amount * (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100) / config.usd_rate
+                fee_multiplier = (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100)
+                val_str += f" *{fee_multiplier:.2f} / {config.usd_rate}={usdt_val:.2f}"
+            reply += f"  {time_str} {val_str}\n"
         reply += "\n"
         
         reply += f"下发 ({summary['count_payout']}笔)：\n"
         recent_payouts = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="payout")
         for r in recent_payouts:
              time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
-             reply += f"  {time_str}  <b>{fmt(r.amount)}</b>\n"
+             val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
+             reply += f"  {time_str}  <b>{val_fmt}</b>\n"
         reply += "\n"
 
-        reply += f"总入款: {fmt(total_in)}\n"
-        reply += f"费率: {config.fee_percent}%\n"
+        total_in_fmt = f"{int(total_in):,}" if not config.decimal_mode else f"{total_in:,.2f}"
+        reply += f"总入款: {total_in_fmt}\n"
+        
+        # Display fee percent nicely (e.g. 7% or 5.5%)
+        fee_str = f"{int(config.fee_percent)}%" if config.fee_percent == int(config.fee_percent) else f"{config.fee_percent}%"
+        reply += f"费率: {fee_str}\n"
         
         if config.usd_rate > 0:
             reply += f"汇率: {config.usd_rate}\n"
+            
             should_pay_usdt = should_pay / config.usd_rate
             pending_pay_usdt = pending_pay / config.usd_rate
-            reply += f"\n应下发: {pending_pay_usdt:.2f} USDT\n"
-            reply += f"未下发: {pending_pay_usdt:.2f} USDT\n"
+            
+            should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else f"{should_pay:,.2f}"
+            pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else f"{pending_pay:,.2f}"
+            
+            reply += f"\n应下发: {should_pay_fmt} | {should_pay_usdt:.2f} U\n"
+            reply += f"未下发: {pending_pay_fmt} | {pending_pay_usdt:.2f} U\n"
         else:
-             reply += f"\n应下发: {fmt(should_pay)}\n"
-             reply += f"未下发: {fmt(pending_pay)}\n"
+             should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else f"{should_pay:,.2f}"
+             pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else f"{pending_pay:,.2f}"
+             reply += f"\n应下发: {should_pay_fmt}\n"
+             reply += f"未下发: {pending_pay_fmt}\n"
 
         # --- Dynamic Buttons Logic ---
         # Fetch Bot Config
