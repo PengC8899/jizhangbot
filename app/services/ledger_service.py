@@ -64,6 +64,15 @@ class LedgerService:
         config = await self.get_group_config(group_id, bot_id)
         return config.is_active
 
+    async def update_group_config(self, group_id: int, bot_id: int, **kwargs):
+        """Update group config in DB and invalidate cache"""
+        stmt = update(GroupConfig).where(
+            and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)
+        ).values(**kwargs)
+        await self.session.execute(stmt)
+        await self.session.commit()
+        await cache_service.invalidate_group_config(group_id, bot_id)
+
     async def start_recording(self, group_id: int, bot_id: int):
         stmt = update(GroupConfig).where(
             and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)

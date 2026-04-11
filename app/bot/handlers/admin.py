@@ -30,8 +30,7 @@ async def set_rate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             config = await service.get_group_config(chat_id, bot_id)
             old_rate = config.fee_percent
-            config.fee_percent = rate
-            await session.commit()
+            await service.update_group_config(chat_id, bot_id, fee_percent=rate)
             
             # Audit Log
             audit = AuditService(session)
@@ -75,27 +74,28 @@ async def set_currency_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             match = re.search(pattern, text)
             if match:
                 val = Decimal(match.group(1))
+                update_kwargs = {}
                 if curr == "usd": 
                     changes["usd_old"] = config.usd_rate
-                    config.usd_rate = val
+                    update_kwargs["usd_rate"] = val
                 elif curr == "php": 
                     changes["php_old"] = config.php_rate
-                    config.php_rate = val
+                    update_kwargs["php_rate"] = val
                 elif curr == "myr": 
                     changes["myr_old"] = config.myr_rate
-                    config.myr_rate = val
+                    update_kwargs["myr_rate"] = val
                 elif curr == "thb": 
                     changes["thb_old"] = config.thb_rate
-                    config.thb_rate = val
+                    update_kwargs["thb_rate"] = val
+                
+                await service.update_group_config(chat_id, bot_id, **update_kwargs)
                 updated = True
                 msg = f"✅ {curr.upper()} 汇率已设为 {val}"
                 changes["currency"] = curr
-                changes["new_val"] = val
+                changes["new_val"] = float(val)
                 break
         
         if updated:
-            await session.commit()
-            
             # Audit Log
             audit = AuditService(session)
             await audit.log_action(
@@ -218,20 +218,15 @@ async def mode_setting_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service, session = await get_service()
     try:
         config = await service.get_group_config(chat_id, bot_id)
-        
         if "无小数" in text:
-            config.decimal_mode = False
-            msg = "✅ 已设置为无小数模式"
+            await service.update_group_config(chat_id, bot_id, decimal_mode=False)
+            await update.message.reply_text("✅ 已切换为无小数模式")
         elif "计数模式" in text:
-            config.simple_mode = True
-            msg = "✅ 已设置为计数模式"
+            await service.update_group_config(chat_id, bot_id, simple_mode=True)
+            await update.message.reply_text("✅ 已切换为计数模式")
         elif "原始模式" in text:
-            config.decimal_mode = True
-            config.simple_mode = False
-            msg = "✅ 已恢复原始模式"
-            
-        await session.commit()
-        await update.message.reply_text(msg)
+            await service.update_group_config(chat_id, bot_id, decimal_mode=True, simple_mode=False)
+            await update.message.reply_text("✅ 已恢复原始模式")
     finally:
         await session.close()
 
