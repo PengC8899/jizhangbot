@@ -23,8 +23,8 @@
 
         <form method="POST" action="/customer/login">
             <div class="mb-3">
-                <label class="form-label small text-muted">Bot ID</label>
-                <input type="number" name="bot_id" class="form-control" value="{{ bot_id }}" required autofocus placeholder="例如: 1">
+                <label class="form-label small text-muted">登录账号</label>
+                <input type="text" name="account" class="form-control" value="{{ account }}" required autofocus placeholder="请输入管理员分配的账号或 Bot ID">
             </div>
             <div class="mb-4">
                 <label class="form-label small text-muted">管理密码</label>

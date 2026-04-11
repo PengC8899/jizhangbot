@@ -66,20 +66,28 @@ async def get_current_customer_bot(request: Request, db: AsyncSession = Depends(
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    bot_id = request.query_params.get("bot_id", "")
-    return templates.TemplateResponse("customer/login.html", {"request": request, "bot_id": bot_id})
+    account = request.query_params.get("account", "")
+    return templates.TemplateResponse("customer/login.html", {"request": request, "account": account})
 
 @router.post("/login", response_class=HTMLResponse)
-async def login_action(request: Request, bot_id: int = Form(...), password: str = Form(...), db: AsyncSession = Depends(get_db)):
-    bot = await db.get(Bot, bot_id)
+async def login_action(request: Request, account: str = Form(...), password: str = Form(...), db: AsyncSession = Depends(get_db)):
+    bot = None
+    # 1. Try finding by web_username
+    result = await db.execute(select(Bot).where(Bot.web_username == account))
+    bot = result.scalars().first()
+    
+    # 2. Fallback to finding by bot_id if account is numeric
+    if not bot and account.isdigit():
+        bot = await db.get(Bot, int(account))
+        
     if bot and bot.web_password == password:
         response = RedirectResponse(url="/customer/broadcast", status_code=303)
-        # Set cookie
-        token = f"customer_{bot_id}_{password}"
+        # Set cookie (keep internal bot_id for token structure)
+        token = f"customer_{bot.id}_{password}"
         response.set_cookie(key=COOKIE_NAME, value=token, httponly=True, max_age=86400 * 7) # 7 days
         return response
     
-    return templates.TemplateResponse("customer/login.html", {"request": request, "error": "Bot ID 或密码错误", "bot_id": bot_id})
+    return templates.TemplateResponse("customer/login.html", {"request": request, "error": "账号或密码错误", "account": account})
 
 @router.get("/logout")
 async def logout(request: Request):

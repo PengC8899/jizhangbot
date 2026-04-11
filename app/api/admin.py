@@ -150,6 +150,10 @@ class BotButtonConfig(BaseModel):
     support_text: str = None
     support_url: str = None
 
+class BotCustomerAuth(BaseModel):
+    web_username: str = None
+    web_password: str = None
+
 @router.post("/bot/{bot_id}/buttons")
 async def update_bot_buttons(bot_id: int, config: BotButtonConfig, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     bot = await db.get(Bot, bot_id)
@@ -158,10 +162,23 @@ async def update_bot_buttons(bot_id: int, config: BotButtonConfig, db: AsyncSess
     
     bot.button_config = json.dumps(config.dict())
     await db.commit()
+    return {"status": "success"}
+
+@router.post("/bot/{bot_id}/customer_auth")
+async def update_bot_customer_auth(bot_id: int, auth: BotCustomerAuth, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    bot = await db.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
     
-    # Update running bot context if possible (Optional, as handler reads from DB usually or we refresh)
-    # Ideally we update cache or notify bot manager.
-    # For now, we assume handler queries DB or we add a refresh mechanism.
+    # Check if web_username is already taken by another bot
+    if auth.web_username:
+        existing = await db.execute(select(Bot).where(Bot.web_username == auth.web_username, Bot.id != bot_id))
+        if existing.scalars().first():
+            raise HTTPException(status_code=400, detail="该账号已被其他机器人使用")
+            
+    bot.web_username = auth.web_username
+    bot.web_password = auth.web_password
+    await db.commit()
     return {"status": "success"}
 
 class GroupMessage(BaseModel):

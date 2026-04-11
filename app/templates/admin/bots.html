@@ -50,8 +50,11 @@
                 
                 <hr>
                 
-                <h6>按钮配置</h6>
+                <h6>管理操作</h6>
                 <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary btn-sm" onclick='editCustomerAuth({{ bot.id }}, "{{ bot.web_username or '' }}", "{{ bot.web_password or '' }}")'>
+                        <i class="bi bi-person-lock"></i> 配置群发后台账号
+                    </button>
                     <button class="btn btn-outline-secondary btn-sm" onclick='editButtons({{ bot.id }}, {{ bot.parsed_config | tojson }})'>
                         <i class="bi bi-gear"></i> 配置账单按钮
                     </button>
@@ -151,12 +154,40 @@
     </div>
 </div>
 
+<!-- Edit Customer Auth Modal -->
+<div class="modal fade" id="editAuthModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">配置群发后台登录账号</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="authBotId">
+                <div class="mb-3">
+                    <label class="form-label">登录账号 (可选)</label>
+                    <input type="text" class="form-control" id="authUsername" placeholder="自定义登录账号，留空则只能使用 Bot ID 登录">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">登录密码</label>
+                    <input type="text" class="form-control" id="authPassword" placeholder="请输入密码">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveCustomerAuth()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
     const addBotModal = new bootstrap.Modal(document.getElementById('addBotModal'));
     const editButtonsModal = new bootstrap.Modal(document.getElementById('editButtonsModal'));
+    const editAuthModal = new bootstrap.Modal(document.getElementById('editAuthModal'));
     
     async function addBot() {
         const token = document.getElementById('botToken').value;
@@ -208,6 +239,29 @@
         const res = await apiCall(`/admin/bot/${botId}/buttons`, 'POST', config);
         if (res.success) {
             editButtonsModal.hide();
+            location.reload();
+        } else {
+            alert('保存失败: ' + res.error);
+        }
+    }
+
+    function editCustomerAuth(botId, username, password) {
+        document.getElementById('authBotId').value = botId;
+        document.getElementById('authUsername').value = username;
+        document.getElementById('authPassword').value = password;
+        editAuthModal.show();
+    }
+
+    async function saveCustomerAuth() {
+        const botId = document.getElementById('authBotId').value;
+        const authData = {
+            web_username: document.getElementById('authUsername').value,
+            web_password: document.getElementById('authPassword').value
+        };
+
+        const res = await apiCall(`/admin/bot/${botId}/customer_auth`, 'POST', authData);
+        if (res.success) {
+            editAuthModal.hide();
             location.reload();
         } else {
             alert('保存失败: ' + res.error);

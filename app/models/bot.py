@@ -18,6 +18,7 @@ class Bot(Base):
     button_config = Column(String, default="{}")
     
     # Web Management Password (Plain text for MVP, or hashed)
+    web_username = Column(String, unique=True, nullable=True) # Custom login account
     web_password = Column(String, nullable=True)
 
     # Relationships
