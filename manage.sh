@@ -6,9 +6,9 @@ APP_NAME="jishubot"
 PYTHON_CMD="python3"
 
 # VPS Configuration (Auto-filled)
-VPS_IP="52.193.196.41"
+VPS_IP="54.95.57.243"
 VPS_USER="ubuntu"
-VPS_KEY="./jizhang.pem"
+VPS_KEY="./jisuanqi.pem"
 VPS_PATH="/home/ubuntu/jishubot" # Default path for ubuntu user
 
 function show_help {
