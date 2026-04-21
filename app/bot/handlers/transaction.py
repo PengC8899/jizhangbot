@@ -190,9 +190,7 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return f"{val:.2f}"
 
         # Construct Message
-        reply = f"<b>HYPay国际支付</b>\n"
-        
-        reply += f"入款 ({summary['count_deposit']}笔)：\n"
+        reply = f"入款 ({summary['count_deposit']}笔)：\n"
         recent_deposits = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="deposit")
         for r in recent_deposits:
             time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
@@ -211,7 +209,21 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         recent_payouts = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="payout")
         for r in recent_payouts:
              time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
-             val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
+             
+             # Check if original input was in U
+             is_u_payout = False
+             original_u_amount = None
+             if r.text:
+                 pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", r.text)
+                 if pm and pm.group(4):
+                     is_u_payout = True
+                     original_u_amount = Decimal(pm.group(2))
+             
+             if is_u_payout and original_u_amount is not None:
+                 val_fmt = f"{int(original_u_amount):,}U" if not config.decimal_mode else f"{original_u_amount:,.2f}U"
+             else:
+                 val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
+                 
              reply += f"  {time_str}  <b>{val_fmt}</b>\n"
         reply += "\n"
 
@@ -288,7 +300,14 @@ async def show_bill_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             icon = "🟢" if r.type == "deposit" else "🔴"
             t_name = "入款" if r.type == "deposit" else "下发"
             time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
-            msg += f"{icon} {time_str} <b>{t_name}</b> {r.amount}\n"
+            
+            amount_str = f"{r.amount}"
+            if r.type == "payout" and r.text:
+                pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", r.text)
+                if pm and pm.group(4):
+                    amount_str = f"{pm.group(2)}U"
+            
+            msg += f"{icon} {time_str} <b>{t_name}</b> {amount_str}\n"
             msg += f"   👤 操作: {r.operator_name}\n"
         
         await update.message.reply_text(msg, parse_mode='HTML')
