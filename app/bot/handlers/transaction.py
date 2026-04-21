@@ -213,8 +213,8 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
              # Check if original input was in U
              is_u_payout = False
              original_u_amount = None
-             if r.text:
-                 pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", r.text)
+             if hasattr(r, 'original_text') and r.original_text:
+                 pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", r.original_text)
                  if pm and pm.group(4):
                      is_u_payout = True
                      original_u_amount = Decimal(pm.group(2))
@@ -302,8 +302,8 @@ async def show_bill_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
             
             amount_str = f"{r.amount}"
-            if r.type == "payout" and r.text:
-                pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", r.text)
+            if r.type == "payout" and hasattr(r, 'original_text') and r.original_text:
+                pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", r.original_text)
                 if pm and pm.group(4):
                     amount_str = f"{pm.group(2)}U"
             
