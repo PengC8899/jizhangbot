@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, ForeignKey, BigInteger, func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import datetime
@@ -47,5 +47,11 @@ class BotExchangeTemplate(Base):
 
     bot = relationship("Bot", back_populates="exchange_template")
 
-# Group level override would be similar, but let's stick to the prompt's main request for Bot level first
-# and mention Group level in design.
+class BotAdminUser(Base):
+    __tablename__ = "bot_admin_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(BigInteger, index=True, nullable=True)
+    user_id = Column(BigInteger, nullable=True)
+    username = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now())

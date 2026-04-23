@@ -18,26 +18,31 @@ async def check_operator_permission(update: Update, context: ContextTypes.DEFAUL
     """
     Check if the user has permission to operate the bot in this group.
     Rules:
-    1. Admin/creator always allowed.
-    2. If NO operators exist for this group (for this bot), allow everyone.
-    3. If operators EXIST, user must be in the operator list.
+    1. Admin/creator always allowed (telegram group admin).
+    2. Bot Admin (from admin panel) - allowed in ALL groups.
+    3. Group Operator - allowed only in the group where they were added.
+    4. Everyone else - denied.
     """
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     username = f"@{update.effective_user.username}" if update.effective_user.username else None
     bot_id = context.bot_data.get("db_id")
 
-    # 1. Admin check
+    # 1. Telegram Group Admin check
     if await check_admin(update, context):
         return True
 
-    # 2. Check if there are operators for this bot in this group
-    operators = await service.get_operators(chat_id, bot_id)
-    if not operators:
-        return True # Default to allow all if no operators configured
-
-    # 3. Operator check
-    if await service.is_operator(chat_id, user_id, username, bot_id):
+    # 2. Bot Admin (from admin panel) - global access for this bot
+    if await service.is_bot_admin(bot_id, user_id):
         return True
 
+    # 3. Group Operator - check if operators exist for this bot in this group
+    operators = await service.get_operators(chat_id, bot_id)
+    if operators:
+        # If operators are configured, only they can operate (except admins)
+        if await service.is_operator(chat_id, user_id, username, bot_id):
+            return True
+        return False
+
+    # 4. No operators configured AND not a bot admin - deny
     return False

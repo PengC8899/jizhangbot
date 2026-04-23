@@ -1,7 +1,7 @@
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.group import GroupConfig, Operator, LedgerRecord
-from app.models.bot import Bot
+from app.models.bot import Bot, BotAdminUser
 from datetime import datetime, time, timedelta
 from app.core.cache import cache_service
 from app.core.utils import get_now
@@ -142,6 +142,36 @@ class LedgerService:
             if result.scalars().first() is not None:
                 return True
 
+        return False
+
+    async def add_bot_admin_user(self, bot_id: int, user_id: int, username: str):
+        stmt = select(BotAdminUser).where(
+            and_(
+                BotAdminUser.bot_id == bot_id,
+                BotAdminUser.user_id == user_id if user_id > 0 else True
+            )
+        )
+        result = await self.session.execute(stmt)
+        if result.scalars().first():
+            return
+        admin = BotAdminUser(bot_id=bot_id, user_id=user_id, username=username)
+        self.session.add(admin)
+        await self.session.commit()
+
+    async def remove_bot_admin_user(self, bot_id: int, user_id: int):
+        stmt = delete(BotAdminUser).where(
+            and_(BotAdminUser.bot_id == bot_id, BotAdminUser.user_id == user_id)
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+
+    async def is_bot_admin(self, bot_id: int, user_id: int, username: str = None) -> bool:
+        conditions = [BotAdminUser.bot_id == bot_id]
+        conditions_by_user = conditions + [BotAdminUser.user_id == user_id]
+        stmt = select(BotAdminUser).where(and_(*conditions_by_user))
+        result = await self.session.execute(stmt)
+        if result.scalars().first() is not None:
+            return True
         return False
 
     async def get_daily_records(self, group_id: int, bot_id: int = None) -> list[LedgerRecord]:

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Form
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, delete
 from pydantic import BaseModel
 from datetime import date, datetime, timedelta
 import json
@@ -12,7 +12,7 @@ from telegram.error import InvalidToken
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.bot import Bot
+from app.models.bot import Bot, BotAdminUser
 from app.models.group import GroupConfig, Operator, LedgerRecord, LicenseCode, TrialRequest
 from app.core.bot_manager import bot_manager
 from app.services.license_service import LicenseService
@@ -178,6 +178,48 @@ async def update_bot_customer_auth(bot_id: int, auth: BotCustomerAuth, db: Async
             
     bot.web_username = auth.web_username
     bot.web_password = auth.web_password
+    await db.commit()
+    return {"status": "success"}
+
+class BotAdminUserInput(BaseModel):
+    user_id: int = None
+    username: str = None
+
+@router.get("/bot/{bot_id}/admins")
+async def get_bot_admins(bot_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    stmt = select(BotAdminUser).where(BotAdminUser.bot_id == bot_id)
+    result = await db.execute(stmt)
+    admins = result.scalars().all()
+    return [{"id": a.id, "user_id": a.user_id, "username": a.username} for a in admins]
+
+@router.post("/bot/{bot_id}/admins")
+async def add_bot_admin(bot_id: int, input: BotAdminUserInput, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    bot = await db.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+
+    user_id = input.user_id or 0
+    username = input.username or ""
+
+    # Check duplicate
+    stmt = select(BotAdminUser).where(
+        and_(BotAdminUser.bot_id == bot_id, BotAdminUser.user_id == user_id)
+    )
+    result = await db.execute(stmt)
+    if result.scalars().first():
+        return {"status": "exists"}
+
+    admin_user = BotAdminUser(bot_id=bot_id, user_id=user_id, username=username)
+    db.add(admin_user)
+    await db.commit()
+    return {"status": "success"}
+
+@router.delete("/bot/{bot_id}/admins/{user_id}")
+async def remove_bot_admin(bot_id: int, user_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    stmt = delete(BotAdminUser).where(
+        and_(BotAdminUser.bot_id == bot_id, BotAdminUser.user_id == user_id)
+    )
+    await db.execute(stmt)
     await db.commit()
     return {"status": "success"}
 
