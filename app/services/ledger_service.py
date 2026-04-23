@@ -129,12 +129,16 @@ class LedgerService:
         conditions = [Operator.group_id == group_id]
         if bot_id is not None:
             conditions.append(Operator.bot_id == bot_id)
-        conditions_by_user = conditions + [Operator.user_id == user_id]
-        stmt = select(Operator).where(and_(*conditions_by_user))
-        result = await self.session.execute(stmt)
-        if result.scalars().first() is not None:
-            return True
 
+        # Check by user_id (only if user_id > 0)
+        if user_id > 0:
+            conditions_by_user = conditions + [Operator.user_id == user_id]
+            stmt = select(Operator).where(and_(*conditions_by_user))
+            result = await self.session.execute(stmt)
+            if result.scalars().first() is not None:
+                return True
+
+        # Check by username (if user_id == 0 and username provided)
         if username:
             conditions_by_username = conditions + [Operator.username == username]
             stmt = select(Operator).where(and_(*conditions_by_username))
