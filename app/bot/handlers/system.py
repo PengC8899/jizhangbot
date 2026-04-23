@@ -4,9 +4,11 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.services.license_service import LicenseService
 from app.services.broadcast_service import BroadcastService
+from app.services.ledger_service import LedgerService
 from app.models.group import GroupConfig, TrialRequest
 from app.core.utils import get_now, to_timezone
 from app.core.config import settings
+from app.bot.handlers.permissions import check_operator_permission
 from loguru import logger
 
 async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,24 +109,21 @@ async def activate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     bot_id = context.bot_data.get("db_id")
     chat_id = update.effective_chat.id
-    
-    # Permission: Only admin/creator
-    user = update.effective_user
-    member = await context.bot.get_chat_member(chat_id, user.id)
-    if member.status not in ['creator', 'administrator']:
-        await update.message.reply_text("⚠️ 只有管理员可以激活机器人")
-        return
 
-    # Get Code
-    args = context.args
-    if not args:
-        await update.message.reply_text("⚠️ 请输入激活码 (例如: /activate HY-XXXX-XXXX-XXXX)")
-        return
-    code = args[0]
-    
     session = AsyncSessionLocal()
-    service = LicenseService(session)
     try:
+        permission_service = LedgerService(session)
+        if not await check_operator_permission(update, context, permission_service):
+            return
+
+        # Get Code
+        args = context.args
+        if not args:
+            await update.message.reply_text("⚠️ 请输入激活码 (例如: /activate HY-XXXX-XXXX-XXXX)")
+            return
+        code = args[0]
+
+        service = LicenseService(session)
         success, msg = await service.redeem_code(code, chat_id, bot_id)
         if success:
             await update.message.reply_text(f"🎉 {msg}")

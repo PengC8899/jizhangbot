@@ -1,4 +1,6 @@
+import json
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.database import AsyncSessionLocal
 from app.models.bot import Bot
@@ -24,3 +26,19 @@ async def get_bot_config(bot_id: int):
                 "php": bot.exchange_template.php_rate if bot.exchange_template else 1.0,
             }
         }
+
+async def get_bot_button_config(bot_id: int, session: AsyncSession | None = None) -> dict:
+    async def _load_config(active_session: AsyncSession) -> dict:
+        bot = await active_session.get(Bot, bot_id)
+        if not bot or not bot.button_config:
+            return {}
+        try:
+            return json.loads(bot.button_config)
+        except Exception:
+            return {}
+
+    if session is not None:
+        return await _load_config(session)
+
+    async with AsyncSessionLocal() as active_session:
+        return await _load_config(active_session)

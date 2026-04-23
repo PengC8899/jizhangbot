@@ -11,7 +11,7 @@ async def dashboard_page():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HYPay 管理后台</title>
+    <title>机器人管理后台</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -20,7 +20,7 @@ async def dashboard_page():
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
         <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">🤖 HYPay 机器人管理后台</h1>
+            <h1 class="text-3xl font-bold text-gray-800">🤖 机器人管理后台</h1>
             <div class="space-x-4">
                 <button onclick="loadPendingRequests()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow">
                     🔄 刷新申请

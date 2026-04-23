@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 - **Web Dashboard**: Added a visual admin dashboard at `/dashboard` for managing trial requests.
 - **Trial Authorization**: Implemented `TrialRequest` model and approval flow. Users can now request trials via private chat.
 - **Welcome Message**: Added a stylized welcome message for new group members.
-- **Enhanced Formatting**: Updated transaction response format to match "HYPay" commercial style (with emojis and detailed breakdown).
+- **Enhanced Formatting**: Updated transaction response format to match the commercial style (with emojis and detailed breakdown).
 - **Flexible Regex**: Improved command regex to handle leading spaces (e.g., ` +1000`).
 
 ### Changed

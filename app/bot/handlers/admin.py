@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
+from app.services.config_service import get_bot_button_config
 from app.services.price_service import price_service
 from app.services.audit_service import AuditService
 from app.bot.handlers.permissions import (
@@ -14,6 +15,12 @@ import re
 import logging
 
 logger = logging.getLogger(__name__)
+
+def build_default_group_welcome(name: str) -> str:
+    return f"""<b>╔══════✦══════╗</b>
+<b>欢迎 {name}</b>
+<b>加入本群</b>
+<b>╚══════✦══════╝</b>"""
 
 async def get_service():
     session = AsyncSessionLocal()
@@ -286,7 +293,7 @@ async def help_manual_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     User: 详细说明书
     """
     msg = """
-<b>📝 HYPay 机器人使用说明书</b>
+<b>📝 机器人使用说明书</b>
 
 <b>1. 基础指令 (支持中文命令)</b>
 - <code>/开始</code> (或 <code>/start</code>) : 每天记账前必须发送
@@ -383,48 +390,59 @@ async def usdt_price_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lk/lz/lw/k100/z100/w100
     """
     text = update.message.text.lower().strip()
+    service, session = await get_service()
+    try:
+        if not await check_operator_permission(update, context, service):
+            return
     
-    # List Prices
-    if text in ['lk', 'lz', 'lw']:
-        prices = await price_service.get_prices()
-        # Mock logic
-        type_map = {'lk': 'card', 'lz': 'ali', 'lw': 'wx'}
-        name_map = {'lk': '银行卡', 'lz': '支付宝', 'lw': '微信'}
-        
-        ptype = type_map[text]
-        price = prices.get(ptype)
-        
-        await update.message.reply_text(f"欧易 {name_map[text]} 实时价格: {price}")
-        return
+        # List Prices
+        if text in ['lk', 'lz', 'lw']:
+            prices = await price_service.get_prices()
+            # Mock logic
+            type_map = {'lk': 'card', 'lz': 'ali', 'lw': 'wx'}
+            name_map = {'lk': '银行卡', 'lz': '支付宝', 'lw': '微信'}
+            
+            ptype = type_map[text]
+            price = prices.get(ptype)
+            
+            await update.message.reply_text(f"欧易 {name_map[text]} 实时价格: {price}")
+            return
 
-    # Calculate
-    # k100 -> card, 100 RMB -> ? USDT
-    match = re.match(r"^([kzw])(\d+(\.\d+)?)$", text)
-    if match:
-        prefix = match.group(1)
-        amount = Decimal(match.group(2))
-        
-        type_map = {'k': 'card', 'z': 'ali', 'w': 'wx'}
-        ptype = type_map[prefix]
-        
-        usdt = await price_service.calculate(amount, ptype)
-        await update.message.reply_text(f"{amount} CNY = {usdt:.2f} USDT")
+        # Calculate
+        # k100 -> card, 100 RMB -> ? USDT
+        match = re.match(r"^([kzw])(\d+(\.\d+)?)$", text)
+        if match:
+            prefix = match.group(1)
+            amount = Decimal(match.group(2))
+            
+            type_map = {'k': 'card', 'z': 'ali', 'w': 'wx'}
+            ptype = type_map[prefix]
+            
+            usdt = await price_service.calculate(amount, ptype)
+            await update.message.reply_text(f"{amount} CNY = {usdt:.2f} USDT")
+    finally:
+        await session.close()
 
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Welcome new members
     """
+    bot_id = context.bot_data.get("db_id")
+    btn_config = await get_bot_button_config(bot_id)
+
     for member in update.message.new_chat_members:
         # Ignore if it's the bot itself
         if member.id == context.bot.id:
             continue
             
         name = member.full_name
-        msg = f"""<b>HYPay国际支付</b>
-⭐⭐⭐欢迎 🎉 "{name}" 💙💛💙⭐⭐⭐
-            加入本群
-      ⭐HYPay🔥国际支付⭐
+        msg_template = (btn_config.get("group_welcome_text") or "").strip()
+        if msg_template:
+            msg = msg_template.replace("{name}", name)
+        else:
+            msg = build_default_group_welcome(name)
 
-🔥HYPay 🔥 业务供需频道 @HYPay_GX 🔥"""
-        
-        await update.message.reply_text(msg, parse_mode='HTML')
+        try:
+            await update.message.reply_text(msg, parse_mode='HTML')
+        except Exception:
+            await update.message.reply_text(msg)

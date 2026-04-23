@@ -149,6 +149,8 @@ class BotButtonConfig(BaseModel):
     complaint_url: str = None
     support_text: str = None
     support_url: str = None
+    group_welcome_text: str = None
+    start_welcome_text: str = None
 
 class BotCustomerAuth(BaseModel):
     web_username: str = None
@@ -160,7 +162,7 @@ async def update_bot_buttons(bot_id: int, config: BotButtonConfig, db: AsyncSess
     if not bot:
         raise HTTPException(status_code=404, detail="Bot not found")
     
-    bot.button_config = json.dumps(config.dict())
+    bot.button_config = json.dumps(config.model_dump(), ensure_ascii=False)
     await db.commit()
     return {"status": "success"}
 

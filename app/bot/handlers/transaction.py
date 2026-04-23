@@ -2,6 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes
 from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
+from app.services.config_service import get_bot_button_config
 from app.core.config import settings
 from app.models.bot import Bot
 from app.core.utils import to_timezone
@@ -9,6 +10,12 @@ from app.bot.handlers.permissions import check_operator_permission
 import re
 import json
 from decimal import Decimal
+
+def build_default_start_welcome() -> str:
+    return """<b>╔══════✦══════╗</b>
+<b>欢迎使用本机器人</b>
+<b>请按下方菜单开始操作</b>
+<b>╚══════✦══════╝</b>"""
 
 async def get_service():
     session = AsyncSessionLocal()
@@ -30,7 +37,14 @@ async def group_broadcast_menu_cmd(update: Update, context: ContextTypes.DEFAULT
     """
     bot_id = context.bot_data.get("db_id")
     url = f"http://{settings.DOMAIN}/customer/login?bot_id={bot_id}"
-    
+
+    service, session = await get_service()
+    try:
+        if not await check_operator_permission(update, context, service):
+            return
+    finally:
+        await session.close()
+
     kb = [
         [InlineKeyboardButton("🔗 进入群发管理后台", url=url)]
     ]
@@ -50,6 +64,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     bot_id = context.bot_data.get("db_id")
     chat_id = update.effective_chat.id
+    is_private_chat = update.effective_chat.type == "private"
     
     service, session = await get_service()
     try:
@@ -62,10 +77,22 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await service.get_group_config(chat_id, bot_id, group_name=group_title)
         
         await service.start_recording(chat_id, bot_id)
+
+        if is_private_chat:
+            btn_config = await get_bot_button_config(bot_id, session)
+            start_welcome_text = (btn_config.get("start_welcome_text") or "").strip()
+            welcome_flag = f"start_welcome_shown_{bot_id}"
+            if not context.user_data.get(welcome_flag):
+                welcome_message = start_welcome_text or build_default_start_welcome()
+                try:
+                    await update.message.reply_text(welcome_message, parse_mode='HTML')
+                except Exception:
+                    await update.message.reply_text(welcome_message)
+                context.user_data[welcome_flag] = True
         
         # Only show keyboard in Private Chat
         reply_markup = None
-        if update.effective_chat.type == "private":
+        if is_private_chat:
             reply_markup = await get_main_menu_keyboard()
             
         await update.message.reply_text(
@@ -332,16 +359,12 @@ async def clear_data_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     bot_id = context.bot_data.get("db_id")
     chat_id = update.effective_chat.id
-    
-    # Permission check: usually only admin
-    user = update.effective_user
-    member = await context.bot.get_chat_member(chat_id, user.id)
-    if member.status not in ['creator', 'administrator']:
-        await update.message.reply_text("⚠️ 只有管理员可以执行此操作")
-        return
 
     service, session = await get_service()
     try:
+        if not await check_operator_permission(update, context, service):
+            return
+
         await service.delete_today_records(chat_id, bot_id)
         await update.message.reply_text("🗑️ 今日数据已清理")
     finally:
