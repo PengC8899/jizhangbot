@@ -30,8 +30,7 @@ async def set_rate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service, session = await get_service()
         try:
             if not await check_operator_permission(update, context, service):
-                await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
-                return
+                return # Silent return for no permission
                 
             config = await service.get_group_config(chat_id, bot_id)
             old_rate = config.fee_percent
@@ -71,8 +70,7 @@ async def set_currency_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         if not await check_operator_permission(update, context, service):
-            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
-            return
+            return # Silent return for no permission
             
         config = await service.get_group_config(chat_id, bot_id)
         updated = False

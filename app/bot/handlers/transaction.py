@@ -54,8 +54,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service, session = await get_service()
     try:
         if not await check_operator_permission(update, context, service):
-            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
-            return
+            return # Silent return for no permission
             
         # Update Group Name when starting
         group_title = update.effective_chat.title
@@ -86,8 +85,7 @@ async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service, session = await get_service()
     try:
         if not await check_operator_permission(update, context, service):
-            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
-            return
+            return # Silent return for no permission
             
         await service.stop_recording(chat_id, bot_id)
         await update.message.reply_text("🛑 记录已结束")
@@ -137,14 +135,11 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         # Check permissions
         if not await check_operator_permission(update, context, service):
-            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
-            return
+            return # Silent return for no permission
 
         # Check if active
         if not await service.is_group_active(chat_id, bot_id):
-            logger.info(f"Group {chat_id} not active")
-            await update.message.reply_text("⚠️ 请先输入“开始”以开启今日记录")
-            return
+            return # Silent return for inactive group
 
         type_ = "deposit"
         amount = Decimal(0)
@@ -305,8 +300,7 @@ async def show_bill_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service, session = await get_service()
     try:
         if not await check_operator_permission(update, context, service):
-            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
-            return
+            return # Silent return for no permission
             
         records = await service.get_recent_records(chat_id, bot_id, limit=5)
         if not records:
