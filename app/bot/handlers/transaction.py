@@ -5,6 +5,7 @@ from app.services.ledger_service import LedgerService
 from app.core.config import settings
 from app.models.bot import Bot
 from app.core.utils import to_timezone
+from app.bot.handlers.permissions import check_operator_permission
 import re
 import json
 from decimal import Decimal
@@ -52,6 +53,10 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
+        if not await check_operator_permission(update, context, service):
+            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
+            return
+            
         # Update Group Name when starting
         group_title = update.effective_chat.title
         # Ensure config exists and update name
@@ -80,6 +85,10 @@ async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
+        if not await check_operator_permission(update, context, service):
+            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
+            return
+            
         await service.stop_recording(chat_id, bot_id)
         await update.message.reply_text("🛑 记录已结束")
     finally:
@@ -126,6 +135,11 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     service, session = await get_service()
     try:
+        # Check permissions
+        if not await check_operator_permission(update, context, service):
+            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
+            return
+
         # Check if active
         if not await service.is_group_active(chat_id, bot_id):
             logger.info(f"Group {chat_id} not active")
@@ -290,6 +304,10 @@ async def show_bill_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
+        if not await check_operator_permission(update, context, service):
+            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
+            return
+            
         records = await service.get_recent_records(chat_id, bot_id, limit=5)
         if not records:
             await update.message.reply_text("📭 暂无账单记录")

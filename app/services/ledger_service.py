@@ -90,9 +90,14 @@ class LedgerService:
         await cache_service.invalidate_group_config(group_id, bot_id)
         
     async def add_operator(self, group_id: int, user_id: int, username: str):
-        stmt = select(Operator).where(
-            and_(Operator.group_id == group_id, Operator.user_id == user_id)
-        )
+        if user_id > 0:
+            stmt = select(Operator).where(
+                and_(Operator.group_id == group_id, Operator.user_id == user_id)
+            )
+        else:
+            stmt = select(Operator).where(
+                and_(Operator.group_id == group_id, Operator.username == username)
+            )
         result = await self.session.execute(stmt)
         if result.scalars().first():
             return 
@@ -100,10 +105,15 @@ class LedgerService:
         self.session.add(op)
         await self.session.commit()
 
-    async def remove_operator(self, group_id: int, user_id: int):
-        stmt = delete(Operator).where(
-            and_(Operator.group_id == group_id, Operator.user_id == user_id)
-        )
+    async def remove_operator(self, group_id: int, user_id: int, username: str = None):
+        if user_id > 0:
+            stmt = delete(Operator).where(
+                and_(Operator.group_id == group_id, Operator.user_id == user_id)
+            )
+        else:
+            stmt = delete(Operator).where(
+                and_(Operator.group_id == group_id, Operator.username == username)
+            )
         await self.session.execute(stmt)
         await self.session.commit()
         
@@ -111,6 +121,24 @@ class LedgerService:
         stmt = select(Operator).where(Operator.group_id == group_id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def is_operator(self, group_id: int, user_id: int, username: str = None) -> bool:
+        stmt = select(Operator).where(
+            and_(Operator.group_id == group_id, Operator.user_id == user_id)
+        )
+        result = await self.session.execute(stmt)
+        if result.scalars().first() is not None:
+            return True
+            
+        if username:
+            stmt = select(Operator).where(
+                and_(Operator.group_id == group_id, Operator.username == username)
+            )
+            result = await self.session.execute(stmt)
+            if result.scalars().first() is not None:
+                return True
+                
+        return False
 
     async def get_daily_records(self, group_id: int, bot_id: int = None) -> list[LedgerRecord]:
         # 4AM Logic

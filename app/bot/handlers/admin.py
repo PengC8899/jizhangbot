@@ -4,6 +4,7 @@ from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
 from app.services.price_service import price_service
 from app.services.audit_service import AuditService
+from app.bot.handlers.permissions import check_admin, check_operator_permission
 from decimal import Decimal
 import re
 import logging
@@ -28,6 +29,10 @@ async def set_rate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         service, session = await get_service()
         try:
+            if not await check_operator_permission(update, context, service):
+                await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
+                return
+                
             config = await service.get_group_config(chat_id, bot_id)
             old_rate = config.fee_percent
             await service.update_group_config(chat_id, bot_id, fee_percent=rate)
@@ -65,6 +70,10 @@ async def set_currency_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service, session = await get_service()
     
     try:
+        if not await check_operator_permission(update, context, service):
+            await update.message.reply_text("⚠️ 你没有操作权限 (需要管理员或已添加的操作人)")
+            return
+            
         config = await service.get_group_config(chat_id, bot_id)
         updated = False
         msg = ""
@@ -120,6 +129,10 @@ async def set_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     admin_user = update.effective_user
     
+    if not await check_admin(update, context):
+        await msg.reply_text("⚠️ 只有群管理员才能设置操作人")
+        return
+        
     # Check mentions
     entities = msg.parse_entities(types=["mention", "text_mention"])
     if not entities:
@@ -130,15 +143,18 @@ async def set_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         added_names = []
         audit_details = []
-        for ent, user in entities.items():
-            if user: 
+        for ent, text in entities.items():
+            if ent.type == "text_mention" and ent.user: 
                 # Text Mention
-                await service.add_operator(chat_id, user.id, user.full_name)
-                added_names.append(user.full_name)
-                audit_details.append({"user_id": user.id, "name": user.full_name})
-            else:
+                await service.add_operator(chat_id, ent.user.id, ent.user.full_name)
+                added_names.append(ent.user.full_name)
+                audit_details.append({"user_id": ent.user.id, "name": ent.user.full_name})
+            elif ent.type == "mention":
                 # Standard Mention (@username)
-                pass
+                username = text.strip()
+                await service.add_operator(chat_id, 0, username)
+                added_names.append(username)
+                audit_details.append({"user_id": 0, "name": username})
 
         if added_names:
             # Audit Log
@@ -186,6 +202,10 @@ async def delete_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     msg = update.message
     
+    if not await check_admin(update, context):
+        await msg.reply_text("⚠️ 只有群管理员才能删除操作人")
+        return
+        
     entities = msg.parse_entities(types=["mention", "text_mention"])
     if not entities:
         await msg.reply_text("⚠️ 请@用户来删除操作人")
@@ -194,10 +214,14 @@ async def delete_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     service, session = await get_service()
     try:
         deleted_names = []
-        for ent, user in entities.items():
-            if user:
-                await service.remove_operator(chat_id, user.id)
-                deleted_names.append(user.full_name)
+        for ent, text in entities.items():
+            if ent.type == "text_mention" and ent.user:
+                await service.remove_operator(chat_id, ent.user.id)
+                deleted_names.append(ent.user.full_name)
+            elif ent.type == "mention":
+                username = text.strip()
+                await service.remove_operator(chat_id, 0, username=username)
+                deleted_names.append(username)
         
         if deleted_names:
             await msg.reply_text(f"🗑️ 已删除操作人: {', '.join(deleted_names)}")
