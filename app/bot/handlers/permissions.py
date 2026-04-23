@@ -2,6 +2,11 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from loguru import logger
 
+def normalize_username(username: str | None) -> str | None:
+    if not username:
+        return None
+    return username.strip().lower()
+
 async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Check if the user is an admin or creator of the chat."""
     chat_id = update.effective_chat.id
@@ -18,31 +23,33 @@ async def check_operator_permission(update: Update, context: ContextTypes.DEFAUL
     """
     Check if the user has permission to operate the bot in this group.
     Rules:
-    1. Admin/creator always allowed (telegram group admin).
-    2. Bot Admin (from admin panel) - allowed in ALL groups.
-    3. Group Operator - allowed only in the group where they were added.
-    4. Everyone else - denied.
+    1. Bot Admin (from admin panel) - allowed in ALL groups.
+    2. Group Operator - allowed only in the group where they were added.
+    3. Everyone else - denied.
     """
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-    username = f"@{update.effective_user.username}" if update.effective_user.username else None
+    username = normalize_username(
+        f"@{update.effective_user.username}" if update.effective_user.username else None
+    )
     bot_id = context.bot_data.get("db_id")
 
-    # 1. Telegram Group Admin check
-    if await check_admin(update, context):
+    # 1. Bot Admin (from admin panel) - global access for this bot
+    if await service.is_bot_admin(bot_id, user_id, username):
         return True
 
-    # 2. Bot Admin (from admin panel) - global access for this bot
-    if await service.is_bot_admin(bot_id, user_id):
+    # 2. Group Operator - allowed only in the current bot + current group
+    if await service.is_operator(chat_id, user_id, username, bot_id):
         return True
 
-    # 3. Group Operator - check if operators exist for this bot in this group
-    operators = await service.get_operators(chat_id, bot_id)
-    if operators:
-        # If operators are configured, only they can operate (except admins)
-        if await service.is_operator(chat_id, user_id, username, bot_id):
-            return True
-        return False
-
-    # 4. No operators configured AND not a bot admin - deny
+    # 3. No operator configured or not matched - deny
     return False
+
+async def check_operator_management_permission(update: Update, context: ContextTypes.DEFAULT_TYPE, service) -> bool:
+    """
+    Users who already have bot permission can manage group operators.
+    This includes:
+    1. Bot Admin (global for this bot)
+    2. Group Operator (current group only)
+    """
+    return await check_operator_permission(update, context, service)

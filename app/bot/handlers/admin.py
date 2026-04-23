@@ -1,10 +1,14 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
 from app.services.price_service import price_service
 from app.services.audit_service import AuditService
-from app.bot.handlers.permissions import check_admin, check_operator_permission
+from app.bot.handlers.permissions import (
+    check_operator_management_permission,
+    check_operator_permission,
+    normalize_username,
+)
 from decimal import Decimal
 import re
 import logging
@@ -127,29 +131,30 @@ async def set_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     admin_user = update.effective_user
     
-    if not await check_admin(update, context):
-        await msg.reply_text("⚠️ 只有群管理员才能设置操作人")
-        return
-        
-    # Check mentions
-    entities = msg.parse_entities(types=["mention", "text_mention"])
-    if not entities:
-        await msg.reply_text("⚠️ 请@用户来设置操作人")
-        return
-
     service, session = await get_service()
     try:
+        if not await check_operator_management_permission(update, context, service):
+            return
+
+        entities = msg.parse_entities(types=["mention", "text_mention"])
+        if not entities:
+            await msg.reply_text("⚠️ 请@用户来设置操作人")
+            return
+
         added_names = []
         audit_details = []
         for ent, text in entities.items():
             if ent.type == "text_mention" and ent.user:
-                # Text Mention
-                await service.add_operator(chat_id, ent.user.id, ent.user.full_name, bot_id)
-                added_names.append(ent.user.full_name)
-                audit_details.append({"user_id": ent.user.id, "name": ent.user.full_name})
+                operator_name = (
+                    normalize_username(f"@{ent.user.username}")
+                    if ent.user.username
+                    else ent.user.full_name
+                )
+                await service.add_operator(chat_id, ent.user.id, operator_name, bot_id)
+                added_names.append(operator_name)
+                audit_details.append({"user_id": ent.user.id, "name": operator_name})
             elif ent.type == "mention":
-                # Standard Mention (@username)
-                username = text.strip()
+                username = normalize_username(text)
                 await service.add_operator(chat_id, 0, username, bot_id)
                 added_names.append(username)
                 audit_details.append({"user_id": 0, "name": username})
@@ -180,6 +185,9 @@ async def show_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
+        if not await check_operator_permission(update, context, service):
+            return
+
         operators = await service.get_operators(chat_id, bot_id)
         if not operators:
             await update.message.reply_text("📭 当前无操作人")
@@ -201,24 +209,27 @@ async def delete_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     msg = update.message
 
-    if not await check_admin(update, context):
-        await msg.reply_text("⚠️ 只有群管理员才能删除操作人")
-        return
-
-    entities = msg.parse_entities(types=["mention", "text_mention"])
-    if not entities:
-        await msg.reply_text("⚠️ 请@用户来删除操作人")
-        return
-
     service, session = await get_service()
     try:
+        if not await check_operator_management_permission(update, context, service):
+            return
+
+        entities = msg.parse_entities(types=["mention", "text_mention"])
+        if not entities:
+            await msg.reply_text("⚠️ 请@用户来删除操作人")
+            return
+
         deleted_names = []
         for ent, text in entities.items():
             if ent.type == "text_mention" and ent.user:
                 await service.remove_operator(chat_id, ent.user.id, bot_id=bot_id)
-                deleted_names.append(ent.user.full_name)
+                deleted_names.append(
+                    normalize_username(f"@{ent.user.username}")
+                    if ent.user.username
+                    else ent.user.full_name
+                )
             elif ent.type == "mention":
-                username = text.strip()
+                username = normalize_username(text)
                 await service.remove_operator(chat_id, 0, username=username, bot_id=bot_id)
                 deleted_names.append(username)
 
@@ -240,7 +251,9 @@ async def mode_setting_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
-        config = await service.get_group_config(chat_id, bot_id)
+        if not await check_operator_permission(update, context, service):
+            return
+
         if "无小数" in text:
             await service.update_group_config(chat_id, bot_id, decimal_mode=False)
             await update.message.reply_text("✅ 已切换为无小数模式")
@@ -338,7 +351,7 @@ async def set_web_password_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("⚠️ 密码长度至少为 6 位")
         return
         
-    service, session = await get_service()
+    _, session = await get_service()
     try:
         from app.models.bot import Bot
         bot = await session.get(Bot, bot_id)

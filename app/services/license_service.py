@@ -1,6 +1,6 @@
 import secrets
 import string
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.group import LicenseCode, GroupConfig
 from datetime import datetime, timedelta
@@ -80,8 +80,12 @@ class LicenseService:
         """Check if group OR user has active license (Cached)"""
         # Helper to check dict config
         def is_valid_config(conf: dict) -> bool:
-            if not conf: return False
+            if not conf:
+                return False
             expire_str = conf.get('expire_at')
+            # Backward compatibility: legacy activated groups may not have expire_at.
+            if conf.get('is_active') and (not expire_str or expire_str == 'None'):
+                return True
             if not expire_str or expire_str == 'None':
                 return False
             try:
@@ -104,6 +108,10 @@ class LicenseService:
             result = await self.session.execute(stmt)
             config = result.scalars().first()
             if config:
+                if config.is_active and not config.expire_at:
+                    config_dict = {c.name: getattr(config, c.name) for c in config.__table__.columns}
+                    await cache_service.set_group_config(group_id, bot_id, config_dict)
+                    return True
                 if config.expire_at and config.expire_at > datetime.now():
                     # Cache it for future
                     config_dict = {c.name: getattr(config, c.name) for c in config.__table__.columns}

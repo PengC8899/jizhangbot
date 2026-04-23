@@ -1,7 +1,7 @@
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.group import GroupConfig, Operator, LedgerRecord
-from app.models.bot import Bot, BotAdminUser
+from app.models.bot import BotAdminUser
 from datetime import datetime, time, timedelta
 from app.core.cache import cache_service
 from app.core.utils import get_now
@@ -11,6 +11,12 @@ from typing import Union
 class LedgerService:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    @staticmethod
+    def _normalize_username(username: str | None) -> str | None:
+        if not username:
+            return None
+        return username.strip().lower()
 
     async def get_group_config(self, group_id: int, bot_id: int, group_name: str = None) -> GroupConfig:
         # 1. Try Cache
@@ -90,29 +96,31 @@ class LedgerService:
         await cache_service.invalidate_group_config(group_id, bot_id)
         
     async def add_operator(self, group_id: int, user_id: int, username: str, bot_id: int):
+        normalized_username = self._normalize_username(username)
         stmt = select(Operator).where(
             and_(
                 Operator.group_id == group_id,
                 Operator.bot_id == bot_id,
                 Operator.user_id == user_id if user_id > 0 else True,
-                Operator.username == username if user_id == 0 else True
+                func.lower(Operator.username) == normalized_username if user_id == 0 and normalized_username else True
             )
         )
         result = await self.session.execute(stmt)
         if result.scalars().first():
             return
-        op = Operator(group_id=group_id, bot_id=bot_id, user_id=user_id, username=username)
+        op = Operator(group_id=group_id, bot_id=bot_id, user_id=user_id, username=normalized_username or username)
         self.session.add(op)
         await self.session.commit()
 
     async def remove_operator(self, group_id: int, user_id: int, username: str = None, bot_id: int = None):
+        normalized_username = self._normalize_username(username)
         conditions = [Operator.group_id == group_id]
         if bot_id is not None:
             conditions.append(Operator.bot_id == bot_id)
         if user_id > 0:
             conditions.append(Operator.user_id == user_id)
-        elif username:
-            conditions.append(Operator.username == username)
+        elif normalized_username:
+            conditions.append(func.lower(Operator.username) == normalized_username)
         stmt = delete(Operator).where(and_(*conditions))
         await self.session.execute(stmt)
         await self.session.commit()
@@ -126,6 +134,7 @@ class LedgerService:
         return result.scalars().all()
 
     async def is_operator(self, group_id: int, user_id: int, username: str = None, bot_id: int = None) -> bool:
+        normalized_username = self._normalize_username(username)
         conditions = [Operator.group_id == group_id]
         if bot_id is not None:
             conditions.append(Operator.bot_id == bot_id)
@@ -139,8 +148,8 @@ class LedgerService:
                 return True
 
         # Check by username (if user_id == 0 and username provided)
-        if username:
-            conditions_by_username = conditions + [Operator.username == username]
+        if normalized_username:
+            conditions_by_username = conditions + [func.lower(Operator.username) == normalized_username]
             stmt = select(Operator).where(and_(*conditions_by_username))
             result = await self.session.execute(stmt)
             if result.scalars().first() is not None:
@@ -149,16 +158,18 @@ class LedgerService:
         return False
 
     async def add_bot_admin_user(self, bot_id: int, user_id: int, username: str):
+        normalized_username = self._normalize_username(username)
         stmt = select(BotAdminUser).where(
             and_(
                 BotAdminUser.bot_id == bot_id,
-                BotAdminUser.user_id == user_id if user_id > 0 else True
+                BotAdminUser.user_id == user_id if user_id > 0 else True,
+                func.lower(BotAdminUser.username) == normalized_username if user_id == 0 and normalized_username else True
             )
         )
         result = await self.session.execute(stmt)
         if result.scalars().first():
             return
-        admin = BotAdminUser(bot_id=bot_id, user_id=user_id, username=username)
+        admin = BotAdminUser(bot_id=bot_id, user_id=user_id, username=normalized_username or username)
         self.session.add(admin)
         await self.session.commit()
 
@@ -170,12 +181,35 @@ class LedgerService:
         await self.session.commit()
 
     async def is_bot_admin(self, bot_id: int, user_id: int, username: str = None) -> bool:
+        normalized_username = self._normalize_username(username)
         conditions = [BotAdminUser.bot_id == bot_id]
-        conditions_by_user = conditions + [BotAdminUser.user_id == user_id]
-        stmt = select(BotAdminUser).where(and_(*conditions_by_user))
-        result = await self.session.execute(stmt)
-        if result.scalars().first() is not None:
-            return True
+        if user_id > 0:
+            conditions_by_user = conditions + [BotAdminUser.user_id == user_id]
+            stmt = select(BotAdminUser).where(and_(*conditions_by_user))
+            result = await self.session.execute(stmt)
+            if result.scalars().first() is not None:
+                return True
+        if normalized_username:
+            conditions_by_username = conditions + [func.lower(BotAdminUser.username) == normalized_username]
+            stmt = select(BotAdminUser).where(and_(*conditions_by_username))
+            result = await self.session.execute(stmt)
+            if result.scalars().first() is not None:
+                return True
+
+        # Backward compatibility: existing private licensed users are treated as
+        # bot-level admins until they are migrated into bot_admin_users.
+        if user_id > 0:
+            stmt = select(GroupConfig).where(
+                and_(
+                    GroupConfig.bot_id == bot_id,
+                    GroupConfig.group_id == user_id
+                )
+            )
+            result = await self.session.execute(stmt)
+            legacy_user_config = result.scalars().first()
+            if legacy_user_config is not None:
+                if legacy_user_config.expire_at is None or legacy_user_config.expire_at > datetime.now():
+                    return True
         return False
 
     async def get_daily_records(self, group_id: int, bot_id: int = None) -> list[LedgerRecord]:
