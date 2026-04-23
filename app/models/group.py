@@ -67,8 +67,9 @@ class LicenseCode(Base):
 
 class Operator(Base):
     __tablename__ = "operators"
-    
+
     id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(BigInteger, index=True, nullable=True)
     group_id = Column(BigInteger, index=True)
     user_id = Column(BigInteger) # Telegram User ID
     username = Column(String, nullable=True)

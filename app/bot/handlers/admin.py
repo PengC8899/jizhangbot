@@ -142,15 +142,15 @@ async def set_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         added_names = []
         audit_details = []
         for ent, text in entities.items():
-            if ent.type == "text_mention" and ent.user: 
+            if ent.type == "text_mention" and ent.user:
                 # Text Mention
-                await service.add_operator(chat_id, ent.user.id, ent.user.full_name)
+                await service.add_operator(chat_id, ent.user.id, ent.user.full_name, bot_id)
                 added_names.append(ent.user.full_name)
                 audit_details.append({"user_id": ent.user.id, "name": ent.user.full_name})
             elif ent.type == "mention":
                 # Standard Mention (@username)
                 username = text.strip()
-                await service.add_operator(chat_id, 0, username)
+                await service.add_operator(chat_id, 0, username, bot_id)
                 added_names.append(username)
                 audit_details.append({"user_id": 0, "name": username})
 
@@ -180,7 +180,7 @@ async def show_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     service, session = await get_service()
     try:
-        operators = await service.get_operators(chat_id)
+        operators = await service.get_operators(chat_id, bot_id)
         if not operators:
             await update.message.reply_text("📭 当前无操作人")
             return
@@ -197,13 +197,14 @@ async def delete_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     """
     删除操作人 @user
     """
+    bot_id = context.bot_data.get("db_id")
     chat_id = update.effective_chat.id
     msg = update.message
-    
+
     if not await check_admin(update, context):
         await msg.reply_text("⚠️ 只有群管理员才能删除操作人")
         return
-        
+
     entities = msg.parse_entities(types=["mention", "text_mention"])
     if not entities:
         await msg.reply_text("⚠️ 请@用户来删除操作人")
@@ -214,13 +215,13 @@ async def delete_operator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
         deleted_names = []
         for ent, text in entities.items():
             if ent.type == "text_mention" and ent.user:
-                await service.remove_operator(chat_id, ent.user.id)
+                await service.remove_operator(chat_id, ent.user.id, bot_id=bot_id)
                 deleted_names.append(ent.user.full_name)
             elif ent.type == "mention":
                 username = text.strip()
-                await service.remove_operator(chat_id, 0, username=username)
+                await service.remove_operator(chat_id, 0, username=username, bot_id=bot_id)
                 deleted_names.append(username)
-        
+
         if deleted_names:
             await msg.reply_text(f"🗑️ 已删除操作人: {', '.join(deleted_names)}")
         else:

@@ -89,55 +89,59 @@ class LedgerService:
         await self.session.commit()
         await cache_service.invalidate_group_config(group_id, bot_id)
         
-    async def add_operator(self, group_id: int, user_id: int, username: str):
-        if user_id > 0:
-            stmt = select(Operator).where(
-                and_(Operator.group_id == group_id, Operator.user_id == user_id)
+    async def add_operator(self, group_id: int, user_id: int, username: str, bot_id: int):
+        stmt = select(Operator).where(
+            and_(
+                Operator.group_id == group_id,
+                Operator.bot_id == bot_id,
+                Operator.user_id == user_id if user_id > 0 else True,
+                Operator.username == username if user_id == 0 else True
             )
-        else:
-            stmt = select(Operator).where(
-                and_(Operator.group_id == group_id, Operator.username == username)
-            )
+        )
         result = await self.session.execute(stmt)
         if result.scalars().first():
-            return 
-        op = Operator(group_id=group_id, user_id=user_id, username=username)
+            return
+        op = Operator(group_id=group_id, bot_id=bot_id, user_id=user_id, username=username)
         self.session.add(op)
         await self.session.commit()
 
-    async def remove_operator(self, group_id: int, user_id: int, username: str = None):
+    async def remove_operator(self, group_id: int, user_id: int, username: str = None, bot_id: int = None):
+        conditions = [Operator.group_id == group_id]
+        if bot_id is not None:
+            conditions.append(Operator.bot_id == bot_id)
         if user_id > 0:
-            stmt = delete(Operator).where(
-                and_(Operator.group_id == group_id, Operator.user_id == user_id)
-            )
-        else:
-            stmt = delete(Operator).where(
-                and_(Operator.group_id == group_id, Operator.username == username)
-            )
+            conditions.append(Operator.user_id == user_id)
+        elif username:
+            conditions.append(Operator.username == username)
+        stmt = delete(Operator).where(and_(*conditions))
         await self.session.execute(stmt)
         await self.session.commit()
-        
-    async def get_operators(self, group_id: int):
-        stmt = select(Operator).where(Operator.group_id == group_id)
+
+    async def get_operators(self, group_id: int, bot_id: int = None):
+        conditions = [Operator.group_id == group_id]
+        if bot_id is not None:
+            conditions.append(Operator.bot_id == bot_id)
+        stmt = select(Operator).where(and_(*conditions))
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def is_operator(self, group_id: int, user_id: int, username: str = None) -> bool:
-        stmt = select(Operator).where(
-            and_(Operator.group_id == group_id, Operator.user_id == user_id)
-        )
+    async def is_operator(self, group_id: int, user_id: int, username: str = None, bot_id: int = None) -> bool:
+        conditions = [Operator.group_id == group_id]
+        if bot_id is not None:
+            conditions.append(Operator.bot_id == bot_id)
+        conditions_by_user = conditions + [Operator.user_id == user_id]
+        stmt = select(Operator).where(and_(*conditions_by_user))
         result = await self.session.execute(stmt)
         if result.scalars().first() is not None:
             return True
-            
+
         if username:
-            stmt = select(Operator).where(
-                and_(Operator.group_id == group_id, Operator.username == username)
-            )
+            conditions_by_username = conditions + [Operator.username == username]
+            stmt = select(Operator).where(and_(*conditions_by_username))
             result = await self.session.execute(stmt)
             if result.scalars().first() is not None:
                 return True
-                
+
         return False
 
     async def get_daily_records(self, group_id: int, bot_id: int = None) -> list[LedgerRecord]:
