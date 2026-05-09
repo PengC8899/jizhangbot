@@ -238,8 +238,17 @@ class LedgerService:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def record_transaction(self, bot_id: int, group_id: int, type_: str, amount: Union[Decimal, float, str], 
-                               operator_id: int, operator_name: str, original_text: str):
+    async def record_transaction(
+        self,
+        bot_id: int,
+        group_id: int,
+        type_: str,
+        amount: Union[Decimal, float, str],
+        operator_id: int,
+        operator_name: str,
+        original_text: str,
+        usd_rate_snapshot: Union[Decimal, float, str, None] = None,
+    ):
         # 1. Convert to Decimal for storage
         if isinstance(amount, Decimal):
             amount_decimal = amount
@@ -255,6 +264,11 @@ class LedgerService:
         if type_ == "deposit" and config.fee_percent > 0:
             fee_applied = amount_decimal * (config.fee_percent / Decimal(100))
             
+        if usd_rate_snapshot is None:
+            rate_snapshot = config.usd_rate
+        else:
+            rate_snapshot = Decimal(str(usd_rate_snapshot))
+
         record = LedgerRecord(
             bot_id=bot_id,
             group_id=group_id,
@@ -264,7 +278,7 @@ class LedgerService:
             operator_name=operator_name,
             original_text=original_text,
             fee_applied=fee_applied,
-            usd_rate_snapshot=config.usd_rate,
+            usd_rate_snapshot=rate_snapshot,
             created_at=get_now().replace(tzinfo=None)
         )
         self.session.add(record)

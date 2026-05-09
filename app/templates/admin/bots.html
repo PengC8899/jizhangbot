@@ -80,6 +80,12 @@
                             onclick="editStartWelcome(this)">
                         <i class="bi bi-chat-dots"></i> 配置开始欢迎语
                     </button>
+                    <button class="btn btn-outline-danger btn-sm"
+                            data-bot-id="{{ bot.id }}"
+                            data-bot-name="{{ bot.name or ('Bot #' ~ bot.id) }}"
+                            onclick="deleteBot(this)">
+                        <i class="bi bi-trash"></i> 删除机器人
+                    </button>
                 </div>
             </div>
         </div>
@@ -428,6 +434,26 @@
         } else {
             alert('操作失败: ' + (res.detail || res.error || '未知错误'));
         }
+    }
+
+    async function deleteBot(button) {
+        const botId = button.dataset.botId;
+        const botName = button.dataset.botName || `Bot #${botId}`;
+        const confirmed = confirm(
+            `确定要删除机器人「${botName}」吗？\n\n删除后将同时清理该 Bot 关联的群组配置、操作人、账单记录和模板配置，且无法恢复。`
+        );
+        if (!confirmed) return;
+
+        button.disabled = true;
+
+        const res = await apiCall(`/admin/bot/${botId}`, 'DELETE');
+        if (res.success || res.status === 'success') {
+            location.reload();
+            return;
+        }
+
+        button.disabled = false;
+        alert('删除失败: ' + (res.detail || res.error || '未知错误'));
     }
 </script>
 {% endblock %}

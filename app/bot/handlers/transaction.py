@@ -11,6 +11,44 @@ import re
 import json
 from decimal import Decimal
 
+MANUAL_USD_RATE_PATTERN = re.compile(
+    r"^(?:\+|入款)\s*-?\d+(?:\.\d+)?\s*/\s*(\d+(?:\.\d+)?)\s*$"
+)
+
+
+def extract_manual_usd_rate(text: str | None) -> Decimal | None:
+    if not text:
+        return None
+    match = MANUAL_USD_RATE_PATTERN.match(text.strip())
+    if not match:
+        return None
+    return Decimal(match.group(1))
+
+
+def get_record_usd_rate(record, fallback_rate: Decimal) -> Decimal:
+    snapshot = getattr(record, "usd_rate_snapshot", None)
+    if snapshot is None:
+        return fallback_rate
+
+    snapshot_decimal = Decimal(str(snapshot))
+    if snapshot_decimal > 0:
+        return snapshot_decimal
+
+    return fallback_rate
+
+
+def get_payout_usdt_amount(record, fallback_rate: Decimal) -> Decimal:
+    if hasattr(record, 'original_text') and record.original_text:
+        pm = re.match(r"^(下发)\s*(-?\d+(\.\d+)?)(u|U)?", record.original_text)
+        if pm and pm.group(4):
+            return Decimal(pm.group(2))
+
+    rate = get_record_usd_rate(record, fallback_rate)
+    if rate > 0:
+        return Decimal(str(record.amount)) / rate
+
+    return Decimal(0)
+
 def build_default_start_welcome() -> str:
     return """<b>╔══════✦══════╗</b>
 <b>欢迎使用本机器人</b>
@@ -65,23 +103,14 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_id = context.bot_data.get("db_id")
     chat_id = update.effective_chat.id
     is_private_chat = update.effective_chat.type == "private"
-    
+
     service, session = await get_service()
     try:
-        if not await check_operator_permission(update, context, service):
-            return # Silent return for no permission
-            
-        # Update Group Name when starting
-        group_title = update.effective_chat.title
-        # Ensure config exists and update name
-        await service.get_group_config(chat_id, bot_id, group_name=group_title)
-        
-        await service.start_recording(chat_id, bot_id)
-
         if is_private_chat:
             btn_config = await get_bot_button_config(bot_id, session)
             start_welcome_text = (btn_config.get("start_welcome_text") or "").strip()
             welcome_flag = f"start_welcome_shown_{bot_id}"
+
             if not context.user_data.get(welcome_flag):
                 welcome_message = start_welcome_text or build_default_start_welcome()
                 try:
@@ -89,16 +118,24 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     await update.message.reply_text(welcome_message)
                 context.user_data[welcome_flag] = True
-        
-        # Only show keyboard in Private Chat
-        reply_markup = None
-        if is_private_chat:
-            reply_markup = await get_main_menu_keyboard()
-            
-        await update.message.reply_text(
-            "✅ 机器人已开启，开始记录今日账单 (4:00 - 4:00)",
-            reply_markup=reply_markup
-        )
+
+            await update.message.reply_text(
+                "✅ 机器人已开启，请使用下方菜单开始操作",
+                reply_markup=await get_main_menu_keyboard()
+            )
+            return
+
+        if not await check_operator_permission(update, context, service):
+            return # Silent return for no permission
+
+        # Update Group Name when starting
+        group_title = update.effective_chat.title
+        # Ensure config exists and update name
+        await service.get_group_config(chat_id, bot_id, group_name=group_title)
+
+        await service.start_recording(chat_id, bot_id)
+
+        await update.message.reply_text("✅ 机器人已开启，开始记录今日账单 (4:00 - 4:00)")
     finally:
         await session.close()
 
@@ -197,20 +234,31 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Get Config (and update group name)
         group_title = update.effective_chat.title
         config = await service.get_group_config(chat_id, bot_id, group_name=group_title)
+        default_usd_rate = Decimal(str(config.usd_rate or 0))
+        manual_usd_rate = extract_manual_usd_rate(text) if type_ == "deposit" else None
+        effective_usd_rate = manual_usd_rate or default_usd_rate
         
         if is_usdt_amount:
-            if config.usd_rate <= 0:
+            if effective_usd_rate <= 0:
                 await update.message.reply_text("⚠️ 未设置美元汇率，无法使用 U 结算")
                 return
-            amount = amount * config.usd_rate
+            amount = amount * effective_usd_rate
             
         # Record
         await service.record_transaction(
-            bot_id, chat_id, type_, amount, user.id, user.full_name, text
+            bot_id,
+            chat_id,
+            type_,
+            amount,
+            user.id,
+            user.full_name,
+            text,
+            usd_rate_snapshot=effective_usd_rate,
         )
         
         # Reply with summary
         summary = await service.get_daily_summary(chat_id, bot_id)
+        daily_records = await service.get_daily_records(chat_id, bot_id)
         
         # Calculate Logic (All Decimal)
         total_in = summary['total_deposit']
@@ -219,12 +267,6 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         should_pay = net_in
         pending_pay = should_pay - summary['total_payout']
         
-        # Formatting
-        def fmt(val):
-            if not config.decimal_mode:
-                return f"{int(val)}"
-            return f"{val:.2f}"
-
         # Construct Message
         reply = f"入款 ({summary['count_deposit']}笔)：\n"
         recent_deposits = await service.get_recent_records(chat_id, bot_id, limit=5, record_type="deposit")
@@ -233,11 +275,12 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             # Format number with commas
             val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
             val_str = f"<b>{val_fmt}</b>"
-            
-            if config.usd_rate > 0:
-                usdt_val = r.amount * (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100) / config.usd_rate
+
+            record_usd_rate = get_record_usd_rate(r, default_usd_rate)
+            if record_usd_rate > 0:
+                usdt_val = r.amount * (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100) / record_usd_rate
                 fee_multiplier = (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100)
-                val_str += f" *{fee_multiplier:.2f} / {config.usd_rate}={usdt_val:.2f}"
+                val_str += f" *{fee_multiplier:.2f} / {record_usd_rate}={usdt_val:.2f}"
             reply += f"  {time_str} {val_str}\n"
         reply += "\n"
         
@@ -270,11 +313,31 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         fee_str = f"{int(config.fee_percent)}%" if config.fee_percent == int(config.fee_percent) else f"{config.fee_percent}%"
         reply += f"费率: {fee_str}\n"
         
-        if config.usd_rate > 0:
-            reply += f"汇率: {config.usd_rate}\n"
-            
-            should_pay_usdt = should_pay / config.usd_rate
-            pending_pay_usdt = pending_pay / config.usd_rate
+        usd_rates_used = {
+            get_record_usd_rate(r, default_usd_rate)
+            for r in daily_records
+            if get_record_usd_rate(r, default_usd_rate) > 0
+        }
+
+        should_pay_usdt = Decimal(0)
+        payout_usdt_total = Decimal(0)
+        fee_multiplier = (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100)
+
+        for r in daily_records:
+            record_usd_rate = get_record_usd_rate(r, default_usd_rate)
+            if r.type == "deposit" and record_usd_rate > 0:
+                should_pay_usdt += Decimal(str(r.amount)) * fee_multiplier / record_usd_rate
+            elif r.type == "payout":
+                payout_usdt_total += get_payout_usdt_amount(r, default_usd_rate)
+
+        pending_pay_usdt = should_pay_usdt - payout_usdt_total
+
+        if usd_rates_used:
+            if len(usd_rates_used) == 1:
+                only_rate = next(iter(usd_rates_used))
+                reply += f"汇率: {only_rate}\n"
+            else:
+                reply += "汇率: 按单笔记录\n"
             
             should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else f"{should_pay:,.2f}"
             pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else f"{pending_pay:,.2f}"

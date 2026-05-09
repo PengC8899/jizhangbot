@@ -12,8 +12,8 @@ from telegram.error import InvalidToken
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.bot import Bot, BotAdminUser
-from app.models.group import GroupConfig, Operator, LedgerRecord, LicenseCode, TrialRequest
+from app.models.bot import Bot, BotAdminUser, BotFeeTemplate, BotExchangeTemplate
+from app.models.group import GroupConfig, GroupCategory, Operator, LedgerRecord, LicenseCode, TrialRequest, group_category_association
 from app.core.bot_manager import bot_manager
 from app.services.license_service import LicenseService
 from loguru import logger
@@ -130,10 +130,42 @@ async def bots_ui(request: Request, db: AsyncSession = Depends(get_db), admin=De
 
 @router.get("/ui/groups", response_class=HTMLResponse)
 async def groups_ui(request: Request, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
-    # List all groups that have config
-    result = await db.execute(select(GroupConfig).order_by(GroupConfig.updated_at.desc()))
-    groups = result.scalars().all()
-    return templates.TemplateResponse("admin/groups.html", {"request": request, "groups": groups, "page": "groups"})
+    bot_result = await db.execute(select(Bot).order_by(Bot.id.asc()))
+    bots = bot_result.scalars().all()
+
+    group_result = await db.execute(select(GroupConfig).order_by(GroupConfig.bot_id.asc(), GroupConfig.updated_at.desc()))
+    groups = group_result.scalars().all()
+
+    groups_by_bot = {}
+    for group in groups:
+        groups_by_bot.setdefault(group.bot_id, []).append(group)
+
+    group_sections = []
+    for bot in bots:
+        group_sections.append({
+            "bot_id": bot.id,
+            "bot_name": bot.name or f"Bot #{bot.id}",
+            "groups": groups_by_bot.get(bot.id, [])
+        })
+
+    for bot_id, bot_groups in groups_by_bot.items():
+        if any(section["bot_id"] == bot_id for section in group_sections):
+            continue
+        group_sections.append({
+            "bot_id": bot_id,
+            "bot_name": f"未命名 Bot #{bot_id}" if bot_id is not None else "未关联 Bot",
+            "groups": bot_groups
+        })
+
+    return templates.TemplateResponse(
+        "admin/groups.html",
+        {
+            "request": request,
+            "groups": groups,
+            "group_sections": group_sections,
+            "page": "groups",
+        },
+    )
 
 
 # --- API Endpoints ---
@@ -458,6 +490,38 @@ async def create_bot(bot_in: BotCreate, db: AsyncSession = Depends(get_db), admi
         return {"status": "created_but_failed_to_start", "bot_id": new_bot.id}
 
     return {"status": "success", "bot_id": new_bot.id, "name": new_bot.name}
+
+@router.delete("/bot/{bot_id}")
+async def delete_bot(bot_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    bot = await db.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+
+    # Stop the running bot first so polling/webhook is cleaned up before DB removal.
+    try:
+        await bot_manager.stop_bot(bot_id)
+    except Exception as e:
+        logger.error(f"Failed to stop bot {bot_id} before deletion: {e}")
+
+    await db.execute(
+        delete(group_category_association).where(
+            group_category_association.c.group_config_id.in_(
+                select(GroupConfig.id).where(GroupConfig.bot_id == bot_id)
+            )
+        )
+    )
+    await db.execute(delete(GroupCategory).where(GroupCategory.bot_id == bot_id))
+    await db.execute(delete(BotAdminUser).where(BotAdminUser.bot_id == bot_id))
+    await db.execute(delete(Operator).where(Operator.bot_id == bot_id))
+    await db.execute(delete(LedgerRecord).where(LedgerRecord.bot_id == bot_id))
+    await db.execute(delete(TrialRequest).where(TrialRequest.bot_id == bot_id))
+    await db.execute(delete(GroupConfig).where(GroupConfig.bot_id == bot_id))
+    await db.execute(delete(BotFeeTemplate).where(BotFeeTemplate.bot_id == bot_id))
+    await db.execute(delete(BotExchangeTemplate).where(BotExchangeTemplate.bot_id == bot_id))
+    await db.delete(bot)
+    await db.commit()
+
+    return {"status": "success", "bot_id": bot_id}
 
 @router.post("/license/generate")
 async def generate_license(days: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):

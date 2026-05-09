@@ -28,49 +28,67 @@
                     </div>
                 </div>
 
-                <!-- Table -->
-                <div class="table-responsive flex-grow-1">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="bg-light text-secondary small text-uppercase">
-                            <tr>
-                                <th style="width: 50px;" class="ps-4"></th> <!-- Checkbox column -->
-                                <th>Chat ID</th>
-                                <th>群组名称</th>
-                                <th>激活时间</th>
-                                <!-- Hidden Bot ID for JS -->
-                                <th style="display:none">BotID</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for group in groups %}
-                            <tr>
-                                <td class="ps-4">
-                                    <div class="form-check">
-                                        <input class="form-check-input group-checkbox" type="checkbox" value="{{ group.group_id }}" data-bot-id="{{ group.bot_id }}">
-                                    </div>
-                                </td>
-                                <td class="text-secondary font-monospace">{{ group.group_id }}</td>
-                                <td class="fw-bold text-dark">{{ group.group_name or "未命名群组" }}</td>
-                                <td class="text-muted small">
-                                    {% if group.active_start_time %}
-                                    {{ group.active_start_time.strftime('%Y-%m-%d %H:%M') }}
+                <!-- Group Sections -->
+                <div class="flex-grow-1 overflow-auto">
+                    {% for section in group_sections %}
+                    <div class="{% if not loop.first %}border-top{% endif %}">
+                        <div class="px-4 py-3 bg-white d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Bot {{ section.bot_id if section.bot_id is not none else "-" }}</span>
+                                <span class="fw-bold text-dark">{{ section.bot_name }}</span>
+                            </div>
+                            <span class="badge bg-light text-secondary border">{{ section.groups|length }} 个群</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light text-secondary small text-uppercase">
+                                    <tr>
+                                        <th style="width: 50px;" class="ps-4"></th>
+                                        <th>Chat ID</th>
+                                        <th>群组名称</th>
+                                        <th>激活时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for group in section.groups %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="form-check">
+                                                <input class="form-check-input group-checkbox" type="checkbox" value="{{ group.group_id }}" data-bot-id="{{ group.bot_id }}">
+                                            </div>
+                                        </td>
+                                        <td class="text-secondary font-monospace">{{ group.group_id }}</td>
+                                        <td class="fw-bold text-dark">{{ group.group_name or "未命名群组" }}</td>
+                                        <td class="text-muted small">
+                                            {% if group.active_start_time %}
+                                            {{ group.active_start_time.strftime('%Y-%m-%d %H:%M') }}
+                                            {% else %}
+                                            <span class="badge bg-light text-secondary border">未激活</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
                                     {% else %}
-                                    <span class="badge bg-light text-secondary border">未激活</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center py-5 text-muted">
-                                    <div class="d-flex flex-column align-items-center">
-                                        <i class="bi bi-inbox fs-1 text-secondary opacity-25 mb-3"></i>
-                                        <span>暂无群组数据</span>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                    <tr>
+                                        <td colspan="4" class="text-center py-4 text-muted">
+                                            <div class="d-flex flex-column align-items-center">
+                                                <i class="bi bi-inbox fs-3 text-secondary opacity-25 mb-2"></i>
+                                                <span>这个 Bot 暂无群组数据</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <div class="d-flex flex-column align-items-center">
+                            <i class="bi bi-inbox fs-1 text-secondary opacity-25 mb-3"></i>
+                            <span>暂无群组数据</span>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
