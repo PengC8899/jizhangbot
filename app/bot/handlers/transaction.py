@@ -278,9 +278,13 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             record_usd_rate = get_record_usd_rate(r, default_usd_rate)
             if record_usd_rate > 0:
-                usdt_val = r.amount * (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100) / record_usd_rate
                 fee_multiplier = (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100)
-                val_str += f" *{fee_multiplier:.2f} / {record_usd_rate}={usdt_val:.2f}"
+                if fee_multiplier == Decimal(1):
+                    usdt_val = r.amount / record_usd_rate
+                    val_str += f"/{record_usd_rate}={usdt_val:.2f}"
+                else:
+                    usdt_val = r.amount * fee_multiplier / record_usd_rate
+                    val_str += f"*{fee_multiplier:.2f}/{record_usd_rate}={usdt_val:.2f}"
             reply += f"  {time_str} {val_str}\n"
         reply += "\n"
         
@@ -332,12 +336,13 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         pending_pay_usdt = should_pay_usdt - payout_usdt_total
 
+        if default_usd_rate > 0:
+            reply += f"汇率: {default_usd_rate}\n"
+        elif usd_rates_used:
+            only_rate = next(iter(usd_rates_used))
+            reply += f"汇率: {only_rate}\n"
+
         if usd_rates_used:
-            if len(usd_rates_used) == 1:
-                only_rate = next(iter(usd_rates_used))
-                reply += f"汇率: {only_rate}\n"
-            else:
-                reply += "汇率: 按单笔记录\n"
             
             should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else f"{should_pay:,.2f}"
             pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else f"{pending_pay:,.2f}"

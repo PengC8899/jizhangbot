@@ -102,7 +102,6 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
             total_payout_usdt += get_payout_usdt_amount(r, usd_rate)
 
     pending_pay_usdt = should_pay_usdt - total_payout_usdt
-    summary_usd_rate_label = next(iter(usd_rates_used)) if len(usd_rates_used) == 1 else "按单笔记录"
     
     # 5. Date String (4AM Logic)
     now = get_now()
@@ -235,7 +234,7 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
                 </tr>
                 <tr>
                     <td class="summary-label">美元汇率:</td>
-                    <td class="summary-value">{{ summary_usd_rate_label if usd_rates_used else usd_rate }}</td>
+                    <td class="summary-value">{{ usd_rate if usd_rate > 0 else (usd_rates_used|first if usd_rates_used else 0) }}</td>
                 </tr>
                 <tr>
                     <td class="summary-label">入款总数:</td>
@@ -278,7 +277,6 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
         should_pay_usdt=should_pay_usdt,
         total_payout_usdt=total_payout_usdt,
         pending_pay_usdt=pending_pay_usdt,
-        summary_usd_rate_label=summary_usd_rate_label,
         usd_rates_used=usd_rates_used,
     )
     
