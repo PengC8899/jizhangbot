@@ -221,7 +221,7 @@ async def exit_groups(req: ExitGroupsRequest, db: AsyncSession = Depends(get_db)
 async def customer_broadcast_api(
     text: str = Form(...),
     group_ids: str = Form(...),
-    image: UploadFile = File(None),
+    media: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
     bot: Bot = Depends(get_current_customer_bot)
 ):
@@ -250,15 +250,20 @@ async def customer_broadcast_api(
     success_count = 0
     error_count = 0
     
-    # Read image once if present
-    image_bytes = None
-    if image:
-        image_bytes = await image.read()
+    # Read media once if present
+    media_bytes = None
+    content_type = None
+    if media:
+        media_bytes = await media.read()
+        content_type = media.content_type
 
     for group in valid_groups:
         try:
-            if image_bytes:
-                await app.bot.send_photo(chat_id=group.group_id, photo=image_bytes, caption=text)
+            if media_bytes:
+                if content_type and content_type.startswith("video/"):
+                    await app.bot.send_video(chat_id=group.group_id, video=media_bytes, caption=text)
+                else:
+                    await app.bot.send_photo(chat_id=group.group_id, photo=media_bytes, caption=text)
             else:
                 await app.bot.send_message(chat_id=group.group_id, text=text)
             success_count += 1

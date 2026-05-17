@@ -6,7 +6,7 @@ from app.models.group import GroupConfig
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from jinja2 import Template
-from app.core.utils import to_timezone, get_now
+from app.core.utils import to_timezone, get_now, format_number
 from decimal import Decimal
 from datetime import timedelta
 import re
@@ -174,11 +174,11 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
                     <tr>
                         <td></td>
                         <td class="meta">{{ to_timezone(r.created_at).strftime('%H:%M:%S') }}</td>
-                        <td class="amount">{{ "%.0f"|format(r.amount) }}</td>
+                        <td class="amount">{{ format_number(r.amount) }}</td>
                         <td class="calc-info">
                             {% set record_rate = get_record_usd_rate(r, usd_rate) %}
                             {% if record_rate > 0 %}
-                            / {{ record_rate }}={{ "%.2f"|format(r.amount / record_rate) }}u
+                            / {{ format_number(record_rate) }}={{ format_number(r.amount / record_rate) }}u
                             {% endif %}
                         </td>
                         <td class="meta"></td>
@@ -212,7 +212,7 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
                     <tr>
                         <td></td>
                         <td class="meta">{{ to_timezone(r.created_at).strftime('%H:%M:%S') }}</td>
-                        <td class="amount">{{ "%.0f"|format(r.amount) }}</td>
+                        <td class="amount">{{ format_number(r.amount) }}</td>
                         <td class="meta"></td>
                         <td class="user-info">{{ r.operator_name }}</td>
                     </tr>
@@ -230,27 +230,27 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
             <table class="summary-table">
                 <tr>
                     <td class="summary-label">费率:</td>
-                    <td class="summary-value">{{ fee_percent }}%</td>
+                    <td class="summary-value">{{ format_number(fee_percent) }}%</td>
                 </tr>
                 <tr>
                     <td class="summary-label">美元汇率:</td>
-                    <td class="summary-value">{{ usd_rate if usd_rate > 0 else (usd_rates_used|first if usd_rates_used else 0) }}</td>
+                    <td class="summary-value">{{ format_number(usd_rate if usd_rate > 0 else (usd_rates_used|first if usd_rates_used else 0)) }}</td>
                 </tr>
                 <tr>
                     <td class="summary-label">入款总数:</td>
-                    <td class="summary-value">{{ "%.0f"|format(total_deposit) }} {% if usd_rates_used %}| {{ "%.2f"|format(total_deposit_usdt) }} USDT{% elif usd_rate > 0 %}| {{ "%.2f"|format(total_deposit / usd_rate) }} USDT{% endif %}</td>
+                    <td class="summary-value">{{ format_number(total_deposit) }} {% if usd_rates_used %}| {{ format_number(total_deposit_usdt) }} USDT{% elif usd_rate > 0 %}| {{ format_number(total_deposit / usd_rate) }} USDT{% endif %}</td>
                 </tr>
                 <tr>
                     <td class="summary-label">应下发:</td>
-                    <td class="summary-value">{{ "%.2f"|format(should_pay) }} {% if usd_rates_used %}| {{ "%.2f"|format(should_pay_usdt) }} USDT{% elif usd_rate > 0 %}| {{ "%.2f"|format(should_pay / usd_rate) }} USDT{% endif %}</td>
+                    <td class="summary-value">{{ format_number(should_pay) }} {% if usd_rates_used %}| {{ format_number(should_pay_usdt) }} USDT{% elif usd_rate > 0 %}| {{ format_number(should_pay / usd_rate) }} USDT{% endif %}</td>
                 </tr>
                 <tr>
                     <td class="summary-label">下发总数:</td>
-                    <td class="summary-value">{{ "%.2f"|format(total_payout) }} {% if usd_rates_used %}| {{ "%.2f"|format(total_payout_usdt) }} USDT{% endif %}</td>
+                    <td class="summary-value">{{ format_number(total_payout) }} {% if usd_rates_used %}| {{ format_number(total_payout_usdt) }} USDT{% endif %}</td>
                 </tr>
                 <tr>
                     <td class="summary-label">未下发:</td>
-                    <td class="summary-value">{{ "%.2f"|format(pending_pay) }} {% if usd_rates_used %}| {{ "%.2f"|format(pending_pay_usdt) }} USDT{% endif %}</td>
+                    <td class="summary-value">{{ format_number(pending_pay) }} {% if usd_rates_used %}| {{ format_number(pending_pay_usdt) }} USDT{% endif %}</td>
                 </tr>
             </table>
         </div>
@@ -273,6 +273,7 @@ async def get_bill_page(group_id: int, request: Request, db: AsyncSession = Depe
         usd_rate=usd_rate,
         to_timezone=to_timezone,
         get_record_usd_rate=get_record_usd_rate,
+        format_number=format_number,
         total_deposit_usdt=total_deposit_usdt,
         should_pay_usdt=should_pay_usdt,
         total_payout_usdt=total_payout_usdt,

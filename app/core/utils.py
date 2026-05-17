@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 import pytz
 from app.core.config import settings
 
@@ -6,6 +7,27 @@ def get_now():
     """Returns current time in configured timezone (default Asia/Shanghai)"""
     tz = pytz.timezone(settings.TIMEZONE)
     return datetime.now(tz)
+
+def format_number(val) -> str:
+    """Formats numbers with commas and removes trailing zeros for fractional parts, up to 2 decimal places"""
+    if val is None:
+        return "0"
+    try:
+        d = Decimal(str(val))
+    except Exception:
+        return str(val)
+        
+    if d == d.to_integral_value():
+        return f"{int(d):,}"
+    
+    # Format to at most 2 decimal places, then remove trailing zeros
+    # Use quantize to round to 2 decimal places first
+    d_rounded = d.quantize(Decimal('0.01'))
+    
+    if d_rounded == d_rounded.to_integral_value():
+        return f"{int(d_rounded):,}"
+        
+    return f"{d_rounded:,.2f}".rstrip('0').rstrip('.')
 
 def to_timezone(dt: datetime):
     """Converts a datetime to configured timezone"""

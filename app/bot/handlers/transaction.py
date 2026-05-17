@@ -5,7 +5,7 @@ from app.services.ledger_service import LedgerService
 from app.services.config_service import get_bot_button_config
 from app.core.config import settings
 from app.models.bot import Bot
-from app.core.utils import to_timezone
+from app.core.utils import to_timezone, format_number
 from app.bot.handlers.permissions import check_operator_permission
 import re
 import json
@@ -273,7 +273,7 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         for r in recent_deposits:
             time_str = to_timezone(r.created_at).strftime("%H:%M:%S")
             # Format number with commas
-            val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
+            val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else format_number(r.amount)
             val_str = f"<b>{val_fmt}</b>"
 
             record_usd_rate = get_record_usd_rate(r, default_usd_rate)
@@ -281,10 +281,10 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 fee_multiplier = (Decimal(100) - Decimal(config.fee_percent)) / Decimal(100)
                 if fee_multiplier == Decimal(1):
                     usdt_val = r.amount / record_usd_rate
-                    val_str += f"/{record_usd_rate}={usdt_val:.2f}"
+                    val_str += f"/{format_number(record_usd_rate)}={format_number(usdt_val)}"
                 else:
                     usdt_val = r.amount * fee_multiplier / record_usd_rate
-                    val_str += f"*{fee_multiplier:.2f}/{record_usd_rate}={usdt_val:.2f}"
+                    val_str += f"*{format_number(fee_multiplier)}/{format_number(record_usd_rate)}={format_number(usdt_val)}"
             reply += f"  {time_str} {val_str}\n"
         reply += "\n"
         
@@ -303,14 +303,14 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
                      original_u_amount = Decimal(pm.group(2))
              
              if is_u_payout and original_u_amount is not None:
-                 val_fmt = f"{int(original_u_amount):,}U" if not config.decimal_mode else f"{original_u_amount:,.2f}U"
+                 val_fmt = f"{int(original_u_amount):,}U" if not config.decimal_mode else f"{format_number(original_u_amount)}U"
              else:
-                 val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else f"{r.amount:,.2f}"
+                 val_fmt = f"{int(r.amount):,}" if not config.decimal_mode else format_number(r.amount)
                  
              reply += f"  {time_str}  <b>{val_fmt}</b>\n"
         reply += "\n"
 
-        total_in_fmt = f"{int(total_in):,}" if not config.decimal_mode else f"{total_in:,.2f}"
+        total_in_fmt = f"{int(total_in):,}" if not config.decimal_mode else format_number(total_in)
         reply += f"总入款: {total_in_fmt}\n"
         
         # Display fee percent nicely (e.g. 7% or 5.5%)
@@ -337,21 +337,21 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         pending_pay_usdt = should_pay_usdt - payout_usdt_total
 
         if default_usd_rate > 0:
-            reply += f"汇率: {default_usd_rate}\n"
+            reply += f"汇率: {format_number(default_usd_rate)}\n"
         elif usd_rates_used:
             only_rate = next(iter(usd_rates_used))
-            reply += f"汇率: {only_rate}\n"
+            reply += f"汇率: {format_number(only_rate)}\n"
 
         if usd_rates_used:
             
-            should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else f"{should_pay:,.2f}"
-            pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else f"{pending_pay:,.2f}"
+            should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else format_number(should_pay)
+            pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else format_number(pending_pay)
             
-            reply += f"\n应下发: {should_pay_fmt} | {should_pay_usdt:.2f} U\n"
-            reply += f"未下发: {pending_pay_fmt} | {pending_pay_usdt:.2f} U\n"
+            reply += f"\n应下发: {should_pay_fmt} | {format_number(should_pay_usdt)} U\n"
+            reply += f"未下发: {pending_pay_fmt} | {format_number(pending_pay_usdt)} U\n"
         else:
-             should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else f"{should_pay:,.2f}"
-             pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else f"{pending_pay:,.2f}"
+             should_pay_fmt = f"{int(should_pay):,}" if not config.decimal_mode else format_number(should_pay)
+             pending_pay_fmt = f"{int(pending_pay):,}" if not config.decimal_mode else format_number(pending_pay)
              reply += f"\n应下发: {should_pay_fmt}\n"
              reply += f"未下发: {pending_pay_fmt}\n"
 

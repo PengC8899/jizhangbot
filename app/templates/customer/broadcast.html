@@ -175,8 +175,8 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold small text-dark">附带图片 (可选)</label>
-                            <input class="form-control" type="file" id="broadcastImage" accept="image/*">
+                            <label class="form-label fw-bold small text-dark">附带图片/视频 (可选)</label>
+                            <input class="form-control" type="file" id="broadcastMedia" accept="image/*,video/*">
                         </div>
 
                         <button class="btn btn-primary w-100 py-2 fw-bold" id="sendBtn" onclick="sendBroadcast()">
@@ -462,9 +462,9 @@
             formData.append('text', text);
             formData.append('group_ids', JSON.stringify(selected));
             
-            const imageInput = document.getElementById('broadcastImage');
-            if (imageInput.files.length > 0) {
-                formData.append('image', imageInput.files[0]);
+            const mediaInput = document.getElementById('broadcastMedia');
+            if (mediaInput.files.length > 0) {
+                formData.append('media', mediaInput.files[0]);
             }
 
             const btn = document.getElementById('sendBtn');
@@ -482,7 +482,7 @@
                 if (data.success) {
                     alert(`发送成功: ${data.data.success_count}, 失败: ${data.data.error_count}`);
                     document.getElementById('broadcastText').value = '';
-                    document.getElementById('broadcastImage').value = ''; // Reset file input
+                    document.getElementById('broadcastMedia').value = ''; // Reset file input
                 } else {
                     alert('发送失败: ' + data.error);
                 }
