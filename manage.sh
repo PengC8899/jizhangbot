@@ -21,6 +21,7 @@ function show_help {
     echo "  logs        View VPS logs"
     echo "  migrate     Run DB migrations on VPS"
     echo "  setup_cron  Setup auto-backup cron on VPS"
+    echo "  setup_watchdog Setup 1-minute watchdog cron on VPS"
 }
 
 function start_local {
@@ -84,6 +85,17 @@ function setup_cron {
     echo "Cron job installed (Daily at 3:00 AM)."
 }
 
+function setup_watchdog {
+    echo "Setting up Watchdog Cron job..."
+    CRON_CMD="* * * * * $VPS_PATH/scripts/watchdog.sh"
+    
+    # Check if cron already exists to avoid duplicates
+    ssh -i "$VPS_KEY" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
+        "(crontab -l 2>/dev/null | grep -F '$VPS_PATH/scripts/watchdog.sh') || (crontab -l 2>/dev/null; echo '$CRON_CMD') | crontab -"
+        
+    echo "Watchdog Cron job installed (Every minute)."
+}
+
 if [ "$1" == "start" ]; then
     start_local
 elif [ "$1" == "deploy" ]; then
@@ -99,6 +111,8 @@ elif [ "$1" == "migrate" ]; then
     migrate_db
 elif [ "$1" == "setup_cron" ]; then
     setup_cron
+elif [ "$1" == "setup_watchdog" ]; then
+    setup_watchdog
 else
     show_help
 fi
