@@ -160,7 +160,7 @@ async def handle_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """
     Handle: +1000, 下发1000, 下发100u, 入款-100 (Correction)
     """
-    text = update.message.text
+    text = update.message.text or update.message.caption
     if not text: return
     
     # Debug log

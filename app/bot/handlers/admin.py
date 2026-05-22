@@ -30,7 +30,7 @@ async def set_rate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Match: 设置费率X.X% or 更改费率X.X%
     """
-    text = update.message.text
+    text = update.message.text or update.message.caption
     match = re.search(r"(设置|更改)费率\s*([\d\.]+)(%?)", text)
     if match:
         rate = float(match.group(2))
@@ -66,7 +66,7 @@ async def set_currency_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Match: 设置美元汇率6.5 etc.
     """
-    text = update.message.text
+    text = update.message.text or update.message.caption
     # Generic regex for currency rates
     patterns = {
         "usd": r"设置(?:美元)?汇率\s*([\d\.]+)",
@@ -254,7 +254,7 @@ async def mode_setting_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     设置为无小数 / 设置为计数模式 / 设置为原始模式
     """
-    text = update.message.text
+    text = update.message.text or update.message.caption
     bot_id = context.bot_data.get("db_id")
     chat_id = update.effective_chat.id
     
@@ -391,7 +391,8 @@ async def usdt_price_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     lk/lz/lw/k100/z100/w100
     """
-    text = update.message.text.lower().strip()
+    raw_text = update.message.text or update.message.caption
+    text = raw_text.lower().strip()
     service, session = await get_service()
     try:
         if not await check_operator_permission(update, context, service):

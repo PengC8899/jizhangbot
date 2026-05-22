@@ -23,12 +23,15 @@ async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT
     chat_id = update.effective_chat.id
     
     # Allow /activate command always
-    if update.message and update.message.text:
-        text = update.message.text
-        if text.startswith("/activate") or text.startswith("/激活") or text == "激活":
+    msg_content = None
+    if update.message:
+        msg_content = update.message.text or update.message.caption
+        
+    if msg_content:
+        if msg_content.startswith("/activate") or msg_content.startswith("/激活") or msg_content == "激活":
             return True
         # Allow '试用' to pass through so they can claim trial
-        if text == "试用":
+        if msg_content == "试用":
             return True
         
     session = AsyncSessionLocal()
@@ -42,8 +45,8 @@ async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT
         if not is_valid:
             # Check if it looks like a user attempting to use the bot
             # Only reply for likely commands to avoid spamming normal chat
-            if update.message and update.message.text:
-                msg_text = update.message.text.strip()
+            if msg_content:
+                msg_text = msg_content.strip()
                 if (msg_text.startswith("+") or 
                     msg_text.startswith("入款") or 
                     msg_text.startswith("下发") or 
