@@ -1,12 +1,13 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from sqlalchemy import select
+from datetime import datetime
 from app.core.database import AsyncSessionLocal
 from app.services.license_service import LicenseService
 from app.services.broadcast_service import BroadcastService
 from app.services.ledger_service import LedgerService
 from app.models.group import GroupConfig, TrialRequest
-from app.core.utils import get_now, to_timezone
+from app.core.utils import to_timezone
 from app.core.config import settings
 from app.bot.handlers.permissions import check_operator_permission
 from loguru import logger
@@ -155,7 +156,7 @@ async def trial_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await session.execute(stmt_config)
         config = result.scalars().first()
         
-        if config and config.expire_at and config.expire_at > get_now():
+        if config and config.expire_at and config.expire_at > datetime.now():
             expire_str = to_timezone(config.expire_at).strftime('%Y-%m-%d')
             await update.message.reply_text(f"✅ 您已有有效授权，有效期至: {expire_str}")
             return
