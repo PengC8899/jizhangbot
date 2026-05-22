@@ -43,7 +43,8 @@ async def set_rate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not await check_operator_permission(update, context, service):
                 return # Silent return for no permission
                 
-            config = await service.get_group_config(chat_id, bot_id)
+            group_title = update.effective_chat.title
+            config = await service.get_group_config(chat_id, bot_id, group_name=group_title)
             old_rate = config.fee_percent
             await service.update_group_config(chat_id, bot_id, fee_percent=rate)
             
@@ -83,7 +84,8 @@ async def set_currency_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await check_operator_permission(update, context, service):
             return # Silent return for no permission
             
-        config = await service.get_group_config(chat_id, bot_id)
+        group_title = update.effective_chat.title
+        config = await service.get_group_config(chat_id, bot_id, group_name=group_title)
         updated = False
         msg = ""
         changes = {}

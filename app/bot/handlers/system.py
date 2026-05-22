@@ -122,9 +122,10 @@ async def activate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ 请输入激活码 (例如: /activate HY-XXXX-XXXX-XXXX)")
             return
         code = args[0]
+        group_title = update.effective_chat.title if update.effective_chat else None
 
         service = LicenseService(session)
-        success, msg = await service.redeem_code(code, chat_id, bot_id)
+        success, msg = await service.redeem_code(code, chat_id, bot_id, group_name=group_title)
         if success:
             await update.message.reply_text(f"🎉 {msg}")
         else:

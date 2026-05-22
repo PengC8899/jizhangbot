@@ -22,6 +22,17 @@ class LedgerService:
         # 1. Try Cache
         cached_data = await cache_service.get_group_config(group_id, bot_id)
         if cached_data:
+            if group_name and cached_data.get('group_name') != group_name:
+                # Update group name in DB if it has changed or was empty
+                stmt = update(GroupConfig).where(
+                    and_(GroupConfig.group_id == group_id, GroupConfig.bot_id == bot_id)
+                ).values(group_name=group_name)
+                await self.session.execute(stmt)
+                await self.session.commit()
+                
+                cached_data['group_name'] = group_name
+                await cache_service.set_group_config(group_id, bot_id, cached_data)
+
             # Reconstruct GroupConfig object from dict
             # Be careful: This is a detached object and cannot be used for updates directly without merging
             # However, for read-only access it's perfect.

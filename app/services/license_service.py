@@ -23,7 +23,7 @@ class LicenseService:
         await self.session.commit()
         return code
 
-    async def redeem_code(self, code: str, group_id: int, bot_id: int) -> tuple[bool, str]:
+    async def redeem_code(self, code: str, group_id: int, bot_id: int, group_name: str = None) -> tuple[bool, str]:
         """
         Redeem a code for a group.
         Returns (success, message)
@@ -48,8 +48,10 @@ class LicenseService:
         
         if not group_config:
             # Should exist if user is interacting, but just in case
-            group_config = GroupConfig(group_id=group_id, bot_id=bot_id)
+            group_config = GroupConfig(group_id=group_id, bot_id=bot_id, group_name=group_name)
             self.session.add(group_config)
+        elif group_name and group_config.group_name != group_name:
+            group_config.group_name = group_name
         
         # 3. Apply License
         now = datetime.now()
