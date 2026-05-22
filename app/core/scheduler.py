@@ -4,7 +4,6 @@ from loguru import logger
 from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
 from app.models.group import GroupConfig
-from app.core.bot_manager import bot_manager
 from app.core.config import settings
 
 # Initialize Scheduler
@@ -48,25 +47,11 @@ async def daily_settlement_job():
             # Our definition of "is_active=True" means they typed /start today (or didn't stop).
             # So they are "activated".
             
-            # Stop recording
+            # Stop recording (Silent settlement)
             await service.stop_recording(group.group_id, group.bot_id)
-            
-            # Send notification
-            app = bot_manager.apps.get(group.bot_id)
-            if app:
-                try:
-                    await app.bot.send_message(
-                        chat_id=group.group_id,
-                        text="🌅 <b>每日自动结算完成</b>\n\n已停止当日记账功能。\n如需开始新的一天，请发送 /start 或 点击下方按钮",
-                        parse_mode='HTML'
-                    )
-                    count += 1
-                except Exception as e:
-                    logger.error(f"Failed to send settlement msg to {group.group_id}: {e}")
-            else:
-                logger.warning(f"Bot {group.bot_id} not active for group {group.group_id}")
+            count += 1
                 
-        logger.info(f"Daily settlement completed. Sent notifications to {count} groups.")
+        logger.info(f"Daily settlement completed. Silently stopped recording for {count} groups.")
 
 def start_scheduler():
     # Run at 04:00 every day
