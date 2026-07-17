@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 from app.core.database import AsyncSessionLocal
 from app.services.ledger_service import LedgerService
 from app.services.config_service import get_bot_button_config
-from app.services.price_service import price_service
+from app.services.okx_service import okx_service
 from app.services.audit_service import AuditService
 from app.bot.handlers.permissions import (
     check_operator_management_permission,
@@ -400,15 +400,18 @@ async def usdt_price_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         # List Prices
         if text in ['lk', 'lz', 'lw']:
-            prices = await price_service.get_prices()
-            # Mock logic
-            type_map = {'lk': 'card', 'lz': 'ali', 'lw': 'wx'}
+            type_map = {'lk': 'bank', 'lz': 'aliPay', 'lw': 'wxPay'}
             name_map = {'lk': '银行卡', 'lz': '支付宝', 'lw': '微信'}
             
             ptype = type_map[text]
-            price = prices.get(ptype)
+            prices = await okx_service.get_otc_prices(pay_method=ptype)
             
-            await update.message.reply_text(f"欧易 {name_map[text]} 实时价格: {price}")
+            if not prices:
+                await update.message.reply_text("获取实时价格失败，请稍后再试。")
+                return
+                
+            price = prices[2]['price'] if len(prices) >= 3 else prices[-1]['price']
+            await update.message.reply_text(f"欧易 {name_map[text]} 实时价格(第三档): {price}")
             return
 
         # Calculate
@@ -418,11 +421,20 @@ async def usdt_price_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             prefix = match.group(1)
             amount = Decimal(match.group(2))
             
-            type_map = {'k': 'card', 'z': 'ali', 'w': 'wx'}
+            type_map = {'k': 'bank', 'z': 'aliPay', 'w': 'wxPay'}
+            name_map = {'k': '银行卡', 'z': '支付宝', 'w': '微信'}
             ptype = type_map[prefix]
             
-            usdt = await price_service.calculate(amount, ptype)
-            await update.message.reply_text(f"{amount} CNY = {usdt:.2f} USDT")
+            prices = await okx_service.get_otc_prices(pay_method=ptype)
+            if not prices:
+                await update.message.reply_text("获取实时价格失败，请稍后再试。")
+                return
+                
+            rate_val = prices[2]['price'] if len(prices) >= 3 else prices[-1]['price']
+            rate = Decimal(str(rate_val))
+            
+            usdt = amount / rate if rate > 0 else Decimal(0)
+            await update.message.reply_text(f"{amount} CNY = {usdt:.2f} USDT\n(按 {name_map[prefix]} 第三档价格: {rate})")
     finally:
         await session.close()
 
