@@ -22,6 +22,12 @@ async def otc_query_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Handle: z0, z1, z2
     """
     logger.info("otc_query_cmd triggered")
+    
+    # Debug info
+    chat_type = update.effective_chat.type
+    user_id = update.effective_user.id
+    logger.info(f"OTC query context - Chat Type: {chat_type}, User ID: {user_id}")
+    
     raw_text = update.message.text or update.message.caption
     if not raw_text: return
     text = raw_text.strip().lower()

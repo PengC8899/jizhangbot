@@ -56,10 +56,8 @@ def setup_handlers(application: Application):
     application.add_handler(MessageHandler(filters.Regex(r"^设置为(无小数|计数模式|原始模式)$"), mode_setting_cmd))
     
     # USDT Commands
-    application.add_handler(MessageHandler(filters.Regex(re.compile(r"^(lk|lz|lw|k\d+|z\d+|w\d+)$", re.IGNORECASE)), usdt_price_cmd))
-    
-    # OTC Query Commands (z0, z1, z2)
-    application.add_handler(MessageHandler(filters.Regex(re.compile(r"^\s*(z0|z1|z2)\s*$", re.IGNORECASE)), otc_query_cmd))
+    # Moving usdt_price_cmd down below
+    # application.add_handler(MessageHandler(filters.Regex(re.compile(r"^(lk|lz|lw|k\d+|z\d+|w\d+)$", re.IGNORECASE)), usdt_price_cmd))
     
     # Transactions (Updated regex for negative & 'u')
     # Allow leading spaces: ^\s*
@@ -84,6 +82,15 @@ def setup_handlers(application: Application):
     application.add_handler(MessageHandler(filters.Regex(r"^设置操作人"), set_operator_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^显示操作人$"), show_operator_cmd))
     application.add_handler(MessageHandler(filters.Regex(r"^删除操作人"), delete_operator_cmd))
+
+    # Re-enable USDT commands here to ensure they run after transaction
+    application.add_handler(MessageHandler(filters.Regex(re.compile(r"^(lk|lz|lw|k\d+|z\d+|w\d+)$", re.IGNORECASE)), usdt_price_cmd))
+
+    # Finally, OTC Query Commands (z0, z1, z2) - MUST be here to not be intercepted by general handler
+    otc_regex = re.compile(r"^\s*(z0|z1|z2)\s*$", re.IGNORECASE)
+    # Using a dedicated group to avoid any interception by default handlers
+    application.add_handler(MessageHandler(filters.Regex(otc_regex), otc_query_cmd), group=5)
+    application.add_handler(MessageHandler(filters.CAPTION & filters.Regex(otc_regex), otc_query_cmd), group=5)
 
     # Fallback logging handler to debug missed messages
     # This should be at the very end
