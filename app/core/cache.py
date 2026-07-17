@@ -102,4 +102,24 @@ class CacheService:
                 self.enabled = False
             logger.error(f"Redis delete error: {e}")
 
+    async def get(self, key: str):
+        if not self.enabled:
+            if not await self._ensure_connection():
+                return None
+        try:
+            data = await self.redis.get(key)
+            if data:
+                return json.loads(data)
+        except Exception as e:
+            logger.error(f"Redis get error: {e}")
+        return None
+
+    async def set(self, key: str, value: dict, ttl: int = None):
+        if not self.enabled:
+            return
+        try:
+            await self.redis.setex(key, ttl or self.ttl, json.dumps(value))
+        except Exception as e:
+            logger.error(f"Redis set error: {e}")
+
 cache_service = CacheService()

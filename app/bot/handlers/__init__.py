@@ -6,9 +6,10 @@ from telegram import Update
 from .system import (
     check_license_middleware, activate_cmd, trial_cmd, license_info_cmd, broadcast_cmd
 )
-from .transaction import (
+from app.bot.handlers.transaction import (
     start_cmd, stop_cmd, handle_transaction, show_bill_cmd, clear_data_cmd, group_broadcast_menu_cmd
 )
+from app.bot.handlers.otc import otc_query_cmd
 from .admin import (
     set_rate_cmd, set_currency_rate, set_operator_cmd, show_operator_cmd, delete_operator_cmd,
     mode_setting_cmd, renewal_menu_cmd, renewal_callback, help_manual_cmd,
@@ -56,6 +57,9 @@ def setup_handlers(application: Application):
     
     # USDT Commands
     application.add_handler(MessageHandler(filters.Regex(re.compile(r"^(lk|lz|lw|k\d+|z\d+|w\d+)$", re.IGNORECASE)), usdt_price_cmd))
+    
+    # OTC Query Commands (z0, z1, z2)
+    application.add_handler(MessageHandler(filters.Regex(re.compile(r"^\s*(z0|z1|z2)\s*$", re.IGNORECASE)), otc_query_cmd))
     
     # Transactions (Updated regex for negative & 'u')
     # Allow leading spaces: ^\s*
