@@ -54,7 +54,8 @@ async def check_license_middleware(update: Update, context: ContextTypes.DEFAULT
                     msg_text == "清理今天数据" or
                     msg_text.startswith("/start") or
                     msg_text == "/开始" or
-                    msg_text == "开始"):
+                    msg_text == "开始" or
+                    msg_text in ["z0", "z1", "z2"]):
                     
                     try:
                         await update.message.reply_text(
