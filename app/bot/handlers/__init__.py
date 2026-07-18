@@ -10,6 +10,7 @@ from app.bot.handlers.transaction import (
     start_cmd, stop_cmd, handle_transaction, show_bill_cmd, clear_data_cmd, group_broadcast_menu_cmd
 )
 from app.bot.handlers.otc import otc_query_cmd
+from app.bot.handlers.calculator import calculator_cmd
 from .admin import (
     set_rate_cmd, set_currency_rate, set_operator_cmd, show_operator_cmd, delete_operator_cmd,
     mode_setting_cmd, renewal_menu_cmd, renewal_callback, help_manual_cmd,
@@ -77,6 +78,11 @@ def setup_handlers(application: Application):
     # Support transactions in photo captions (without regex filter because filters.Regex only checks message.text)
     # This handler specifically catches captioned media
     application.add_handler(MessageHandler(filters.CAPTION & ~filters.COMMAND, handle_transaction))
+
+    # Calculator (Must be after handle_transaction to not intercept +100 or +100/7.3)
+    calc_regex = re.compile(r"^[\s\(\)]*[\+\-]?\d+(?:\.\d+)?(?:[\s\(\)]*[\+\-\*\/xX÷][\s\(\)]*[\+\-]?\d+(?:\.\d+)?)+[\s\(\)]*$", re.IGNORECASE)
+    application.add_handler(MessageHandler(filters.Regex(calc_regex), calculator_cmd))
+    application.add_handler(MessageHandler(filters.CAPTION & filters.Regex(calc_regex), calculator_cmd))
 
     # Operator Management
     application.add_handler(MessageHandler(filters.Regex(r"^设置操作人"), set_operator_cmd))
